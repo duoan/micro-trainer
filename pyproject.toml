@@ -39,6 +39,7 @@ classifiers = [
 # ---- Main dependencies ----
 
 dependencies = [
+    "torch>=2.12.0",
 ]
 
 
