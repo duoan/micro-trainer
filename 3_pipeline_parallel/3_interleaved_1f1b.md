@@ -48,16 +48,16 @@ Each rank reports the virtual stages it owns, e.g. `owns virtual chunks [0, 4] o
 NotImplementedError: TODO: interleaved_schedule -- hand-write the virtual-pipeline 1F1B state machine
 ```
 
-When you implement the schedule, the `[c0:F3]` / `[c1:B1]` conveyor log and the `render_gantt` timeline should show a **tighter** packing than `one_forward_backward.py`.
+When you implement the schedule, the `[c0:F3]` / `[c1:B1]` conveyor log and the `render_gantt` timeline should show a **tighter** packing than `2_one_forward_backward.py`.
 
 ## Your battle zone
 
-`interleaved_schedule(...)` in `3_pipeline_parallel/interleaved_1f1b.py`: the warmup / steady / cooldown state machine advancing $V$ virtual chunks per rank, using `send_tensor` / `recv_tensor`, `log_state(rank, chunk, tag)`, and `timeline.span(...)`.
+`interleaved_schedule(...)` in `3_pipeline_parallel/3_interleaved_1f1b.py`: the warmup / steady / cooldown state machine advancing $V$ virtual chunks per rank, using `send_tensor` / `recv_tensor`, `log_state(rank, chunk, tag)`, and `timeline.span(...)`.
 
 ## Run it
 
 ```bash
-python 3_pipeline_parallel/interleaved_1f1b.py
+python 3_pipeline_parallel/3_interleaved_1f1b.py
 ```
 
 ## Papers & further reading

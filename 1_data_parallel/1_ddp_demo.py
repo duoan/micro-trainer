@@ -12,7 +12,7 @@ Your battle zone (see the TODO below):
     In `synchronize_gradients`, hand-write dist.all_reduce to sum each parameter's
     .grad across ranks and then average it.
 
-Run: python 1_data_parallel/ddp_demo.py
+Run: python 1_data_parallel/1_ddp_demo.py
 """
 
 from __future__ import annotations

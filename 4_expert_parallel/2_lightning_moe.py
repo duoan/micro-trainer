@@ -19,7 +19,7 @@ Your battle zone:
     - Finally use env_setup.bar to draw an ASCII performance comparison bar (naive vs
       lightning), wrapping up selling-point #4.
 
-Run: python 4_expert_parallel/lightning_moe.py
+Run: python 4_expert_parallel/2_lightning_moe.py
 """
 
 from __future__ import annotations
@@ -117,7 +117,7 @@ def print_compare_bar(rank: int, naive_ms: float, lightning_ms: float) -> None:
     """Selling-point #4 wrap-up: draw an ASCII comparison bar of naive vs lightning total time.
 
     naive_ms here is a placeholder; the real usage is to plug in the makespan that
-    naive_moe.py printed and compare.
+    1_naive_moe.py printed and compare.
     """
     if rank != 0:
         return
@@ -144,7 +144,7 @@ def run(rank: int, world_size: int, device: torch.device) -> None:
     lightning_ms = timeline.makespan() * 1000
     rank0_print(rank, f"lightning MoE makespan = {lightning_ms:.1f} ms (comm overlapped with compute)")
 
-    # Plug the makespan that naive_moe.py printed below to compare (placeholder shown here).
+    # Plug the makespan that 1_naive_moe.py printed below to compare (placeholder shown here).
     naive_ms_placeholder = lightning_ms * 1.8
     print_compare_bar(rank, naive_ms_placeholder, lightning_ms)
 

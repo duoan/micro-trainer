@@ -101,7 +101,7 @@ The demo builds identical weights on every rank, computes a single-machine MLA r
 
 ## Your battle zone
 
-Implement **`compress_and_project(x, w, rank, device)`** in `7_multi_head_latent_attention/deepseek_mla.py`. The skeleton raises `NotImplementedError`; you fill in:
+Implement **`compress_and_project(x, w, rank, device)`** in `7_multi_head_latent_attention/1_deepseek_mla.py`. The skeleton raises `NotImplementedError`; you fill in:
 
 1. **Down-project to latent**: `c_kv = x @ w["W_DKV"]` → shape `[SEQ, LATENT_DIM]`.
 2. **Up-project K for this rank's head slice**: `k = (c_kv @ w["W_UK"][:, sl]).view(SEQ, HEADS_PER_RANK, HEAD_DIM)` where `sl = head_slice(rank)`.
@@ -116,7 +116,7 @@ Remember the golden rule: compute on MPS, move to **`COMM_DEVICE`** before gloo 
 ## Run it
 
 ```bash
-python 7_multi_head_latent_attention/deepseek_mla.py
+python 7_multi_head_latent_attention/1_deepseek_mla.py
 ```
 
 ## Papers & further reading

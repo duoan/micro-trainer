@@ -22,7 +22,7 @@ Your battle zone:
     - `hsdp_sync_grad`: do the Reduce-Scatter (shard group) + All-Reduce (replica group).
       The 2D process groups are already built for you in `build_mesh_groups`.
 
-Run: python 1_data_parallel/hsdp_demo.py
+Run: python 1_data_parallel/4_hsdp_demo.py
 """
 
 from __future__ import annotations

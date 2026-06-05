@@ -17,13 +17,13 @@ The distributed twist: the load `load_e` is GLOBAL across all ranks, so computin
 All-Reduce(SUM) of every rank's local per-expert token counts. That All-Reduce is your second
 battle zone -- it is what makes the balancer consistent across the whole (data/expert) parallel
 group. (Experts/router are replicated here for clarity; the physical token All-to-All dispatch
-is covered in naive_moe.py / lightning_moe.py / deepseek_deepep.py.)
+is covered in 1_naive_moe.py / 2_lightning_moe.py / 4_deepseek_deepep.py.)
 
 Your battle zone (two TODOs):
     - `deepseek_route`: scores -> add bias -> top-K select -> normalized gates from RAW scores.
     - `update_expert_bias`: All-Reduce local counts into the global load, then nudge the bias.
 
-Run: python 4_expert_parallel/deepseek_moe.py
+Run: python 4_expert_parallel/3_deepseek_moe.py
 """
 
 from __future__ import annotations

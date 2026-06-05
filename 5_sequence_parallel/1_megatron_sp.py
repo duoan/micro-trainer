@@ -20,7 +20,7 @@ Your battle zone (two TODOs):
     - `enter_tp_region` (g):  All-Gather the [S/n, D] shards into the full [S, D].
     - `exit_tp_region`  (g-bar): Reduce-Scatter the [S, D] partial sums into [S/n, D] shards.
 
-Run: python 5_sequence_parallel/megatron_sp.py
+Run: python 5_sequence_parallel/1_megatron_sp.py
 """
 
 from __future__ import annotations

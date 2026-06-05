@@ -51,12 +51,12 @@ When implemented, the live log shows the weight **version** each F/B used — e.
 
 ## Your battle zone
 
-`pipedream_schedule(...)` in `3_pipeline_parallel/pipedream.py`: warmup / steady / cooldown with a `pending` queue, using the provided `stash_weights` / `restore_weights` helpers. Key invariant — **backward(m) restores `item["stash"]` before `out.backward(...)`**, then restores the latest weights before stepping.
+`pipedream_schedule(...)` in `3_pipeline_parallel/4_pipedream.py`: warmup / steady / cooldown with a `pending` queue, using the provided `stash_weights` / `restore_weights` helpers. Key invariant — **backward(m) restores `item["stash"]` before `out.backward(...)`**, then restores the latest weights before stepping.
 
 ## Run it
 
 ```bash
-python 3_pipeline_parallel/pipedream.py
+python 3_pipeline_parallel/4_pipedream.py
 ```
 
 ## Papers & further reading

@@ -18,7 +18,7 @@ Principle in one line (Megatron-LM):
 Your battle zone:
     - `forward`: compute the partial sum Y_i locally, then All-Reduce(SUM) into full Y.
 
-Run: python 2_tensor_parallel/row_parallel.py
+Run: python 2_tensor_parallel/2_row_parallel.py
 """
 
 from __future__ import annotations

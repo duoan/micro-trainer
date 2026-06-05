@@ -1,8 +1,8 @@
 """Module 4 (DeepSeek) - DeepEP-style overlapped All-to-All dispatch + combine.
 
 Principle in one line (DeepEP):
-    naive_moe.py waits out the dispatch All-to-All AND the combine All-to-All, both blocking.
-    lightning_moe.py overlapped the DISPATCH only. DeepEP (DeepSeek's expert-parallel comm
+    1_naive_moe.py waits out the dispatch All-to-All AND the combine All-to-All, both blocking.
+    2_lightning_moe.py overlapped the DISPATCH only. DeepEP (DeepSeek's expert-parallel comm
     library) goes further: it pipelines the ENTIRE MoE layer so that, across token chunks,
     a chunk's dispatch and the previous chunk's combine are BOTH in flight asynchronously
     while an expert is computing. Communication is almost fully hidden behind compute.
@@ -21,7 +21,7 @@ Principle in one line (DeepEP):
 Your battle zone:
     - `deepep_moe_forward`: build the two-stage (dispatch + combine) overlapped pipeline.
 
-Run: python 4_expert_parallel/deepseek_deepep.py
+Run: python 4_expert_parallel/4_deepseek_deepep.py
 """
 
 from __future__ import annotations

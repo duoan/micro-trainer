@@ -16,7 +16,7 @@ Your battle zone:
     - `dualpipe_schedule`: run the two opposing streams, interleaving forward/backward so each
       stage stays busy; record spans so render_gantt shows the bubble shrink vs 1F1B/GPipe.
 
-Run: python 3_pipeline_parallel/deepseek_dualpipe.py
+Run: python 3_pipeline_parallel/6_deepseek_dualpipe.py
 """
 
 from __future__ import annotations
@@ -140,7 +140,7 @@ def run(rank: int, world_size: int, device: torch.device) -> None:
     dualpipe_schedule(rank, world_size, stage, micro_inputs_a, micro_inputs_b, device, timeline)
 
     rank0_print(rank, render_gantt(timeline, world_size))
-    rank0_print(rank, "DualPipe: two opposing streams fill each other's bubbles -- compare with gpipe.py / one_forward_backward.py.")
+    rank0_print(rank, "DualPipe: two opposing streams fill each other's bubbles -- compare with 1_gpipe.py / 2_one_forward_backward.py.")
 
 
 if __name__ == "__main__":

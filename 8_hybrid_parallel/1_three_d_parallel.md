@@ -58,7 +58,7 @@ When both TODOs are correct, stage-1 ranks print `max error vs single-machine` ~
 
 ## Your battle zone
 
-Two functions in `8_hybrid_parallel/three_d_parallel.py`:
+Two functions in `8_hybrid_parallel/1_three_d_parallel.py`:
 
 1. **`hybrid_forward(...)`** — per stage: partial matmul → `dist.all_reduce(..., group=tp_group)`; stage 0 `dist.send` to `rank + DP·TP`, stage 1 `dist.recv` from `rank - DP·TP` (both via `pp_group`).
 2. **`dp_average(t, dp_group)`** — `dist.all_reduce(..., group=dp_group)` then divide by `DP`.
@@ -68,7 +68,7 @@ The 3D mesh of groups is pre-built in `build_3d_mesh`.
 ## Run it
 
 ```bash
-python 8_hybrid_parallel/three_d_parallel.py   # world_size must equal PP*DP*TP
+python 8_hybrid_parallel/1_three_d_parallel.py   # world_size must equal PP*DP*TP
 ```
 
 ## Papers & further reading

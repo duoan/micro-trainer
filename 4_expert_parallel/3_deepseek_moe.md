@@ -8,7 +8,7 @@
 - Output: $y = \sum_s \mathrm{shared}_s(x) + \sum_{e \in \mathrm{top\text{-}K}} g_e \cdot \mathrm{expert}_e(x)$.
 - **Auxiliary-loss-free balancing**: a per-expert bias $b_e$ steers top-K **selection** only; gates come from raw affinity scores.
 - After each step: $b_e \mathrel{+}= \gamma \cdot \mathrm{sign}(\mathrm{target} - \mathrm{load}_e)$ using **global** load from All-Reduce(SUM).
-- This demo replicates router/experts on every rank; physical token dispatch lives in `naive_moe.py` / `lightning_moe.py`.
+- This demo replicates router/experts on every rank; physical token dispatch lives in `1_naive_moe.py` / `2_lightning_moe.py`.
 
 ## The problem
 
@@ -100,7 +100,7 @@ There is **no max-error assertion** in this skeleton — the teaching outcome is
 
 ## Your battle zone
 
-Two functions in `4_expert_parallel/deepseek_moe.py` raise `NotImplementedError` at `# TODO(you)` markers. `deepseek_moe_forward` is already wired; you supply routing and the distributed bias step.
+Two functions in `4_expert_parallel/3_deepseek_moe.py` raise `NotImplementedError` at `# TODO(you)` markers. `deepseek_moe_forward` is already wired; you supply routing and the distributed bias step.
 
 **TODO 1 — `deepseek_route(scores, bias, top_k)`**
 
@@ -120,7 +120,7 @@ Imports already present: `torch.distributed as dist`, `COMM_DEVICE` from `env_se
 ## Run it
 
 ```bash
-python 4_expert_parallel/deepseek_moe.py
+python 4_expert_parallel/3_deepseek_moe.py
 ```
 
 ## Papers & further reading

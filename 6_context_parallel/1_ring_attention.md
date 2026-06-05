@@ -83,7 +83,7 @@ The demo builds full Q, K, V via `build_full_qkv`, computes single-machine refer
 
 ## Your battle zone
 
-Implement **`ring_attention(q_local, k_local, v_local, rank, world_size, device)`** in `6_context_parallel/ring_attention.py`. The skeleton raises `NotImplementedError`; you fill in:
+Implement **`ring_attention(q_local, k_local, v_local, rank, world_size, device)`** in `6_context_parallel/1_ring_attention.py`. The skeleton raises `NotImplementedError`; you fill in:
 
 1. Init $m = \text{full}([L, 1], -\infty)$, `denom = zeros([L, 1])`, `acc = zeros([L, DIM])`.
 2. Start with `k_blk, v_blk = k_local, v_local`.
@@ -98,7 +98,7 @@ Helpers `ring_exchange` and `online_softmax_update` are provided. Remember: comp
 ## Run it
 
 ```bash
-python 6_context_parallel/ring_attention.py
+python 6_context_parallel/1_ring_attention.py
 ```
 
 ## Papers & further reading

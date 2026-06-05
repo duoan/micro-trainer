@@ -16,9 +16,9 @@ Principle in one line (Megatron-LM):
 Your battle zone:
     - `interleaved_schedule`: the warmup / steady / cooldown state machine that advances
       V virtual chunks per rank. Log [c1:F3] style tags and record Timeline spans so the
-      Gantt shows a smaller bubble than one_forward_backward.py.
+      Gantt shows a smaller bubble than 2_one_forward_backward.py.
 
-Run: python 3_pipeline_parallel/interleaved_1f1b.py
+Run: python 3_pipeline_parallel/3_interleaved_1f1b.py
 """
 
 from __future__ import annotations
@@ -138,7 +138,7 @@ def run(rank: int, world_size: int, device: torch.device) -> None:
     interleaved_schedule(rank, world_size, chunks, micro_inputs, device, timeline)
 
     rank0_print(rank, render_gantt(timeline, world_size))
-    rank0_print(rank, "Interleaved 1F1B: V virtual chunks per rank shrink the bubble ~1/V. Compare with one_forward_backward.py!")
+    rank0_print(rank, "Interleaved 1F1B: V virtual chunks per rank shrink the bubble ~1/V. Compare with 2_one_forward_backward.py!")
 
 
 if __name__ == "__main__":

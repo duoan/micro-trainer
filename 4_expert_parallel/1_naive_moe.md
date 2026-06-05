@@ -78,13 +78,13 @@ After a correct implementation, rank 0 prints:
 naive MoE makespan = XXX.X ms (comm and compute fully serialized)
 ```
 
-The **Timeline** records spans with `kind="comm"` for dispatch/combine and `kind="compute"` for expert — strictly back-to-back with idle gaps during comm. Note this makespan; **lightning_moe.py** compares against it with an ASCII bar via `bar(value, total)`.
+The **Timeline** records spans with `kind="comm"` for dispatch/combine and `kind="compute"` for expert — strictly back-to-back with idle gaps during comm. Note this makespan; **2_lightning_moe.py** compares against it with an ASCII bar via `bar(value, total)`.
 
 With `DEFAULT_LINK` at 20 ms and two All-to-Alls per forward, comm alone contributes ~40 ms per rank before expert time — the baseline lightning MoE tries to crush.
 
 ## Your battle zone
 
-Implement **`naive_moe_forward(rank, world_size, expert, tokens, device, timeline)`** in `4_expert_parallel/naive_moe.py`. The skeleton currently raises `NotImplementedError` at the `# TODO(you)` marker.
+Implement **`naive_moe_forward(rank, world_size, expert, tokens, device, timeline)`** in `4_expert_parallel/1_naive_moe.py`. The skeleton currently raises `NotImplementedError` at the `# TODO(you)` marker.
 
 1. **Dispatch** (synchronous):
    - `dispatched = torch.empty_like(tokens, device=COMM_DEVICE)`
@@ -101,7 +101,7 @@ Move tensors to **COMM_DEVICE** before every All-to-All; move back to **device**
 ## Run it
 
 ```bash
-python 4_expert_parallel/naive_moe.py
+python 4_expert_parallel/1_naive_moe.py
 ```
 
 ## Papers & further reading

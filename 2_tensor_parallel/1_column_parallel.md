@@ -75,7 +75,7 @@ The demo builds the same full weight on every rank, computes a single-machine re
 
 ## Your battle zone
 
-Implement **`column_parallel_forward(x, w_shard, rank, world_size, device)`** in `2_tensor_parallel/column_parallel.py`. The skeleton raises `NotImplementedError`; you fill in:
+Implement **`column_parallel_forward(x, w_shard, rank, world_size, device)`** in `2_tensor_parallel/1_column_parallel.py`. The skeleton raises `NotImplementedError`; you fill in:
 
 1. **Local matmul**: `y_local = x @ w_shard` → shape `[BATCH, OUT_DIM / world_size]`.
 2. **Prepare gather list**: `world_size` empty tensors on **`COMM_DEVICE`** (`cpu`), each matching `y_local`'s shape.
@@ -87,7 +87,7 @@ Remember the golden rule: compute on MPS, move to **`COMM_DEVICE`** before gloo 
 ## Run it
 
 ```bash
-python 2_tensor_parallel/column_parallel.py
+python 2_tensor_parallel/1_column_parallel.py
 ```
 
 ## Papers & further reading

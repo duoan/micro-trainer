@@ -67,7 +67,7 @@ The demo builds full Q, K, V, computes a single-machine multi-head attention ref
 
 ## Your battle zone
 
-Implement two functions in `5_sequence_parallel/ulysses_sp.py`:
+Implement two functions in `5_sequence_parallel/2_ulysses_sp.py`:
 
 1. **`all2all_seq_to_head(x_local, world_size, device)`** -- the reshape "group by destination" is given; you write `dist.all_to_all_single` on `COMM_DEVICE` tensors, then view as `[SEQ, HID/n]`.
 2. **`all2all_head_to_seq(o_head, world_size, device)`** -- the inverse swap, same pattern.
@@ -77,7 +77,7 @@ Remember the golden rule: compute on MPS, but the All-to-All runs on **`COMM_DEV
 ## Run it
 
 ```bash
-python 5_sequence_parallel/ulysses_sp.py
+python 5_sequence_parallel/2_ulysses_sp.py
 ```
 
 ## Papers & further reading

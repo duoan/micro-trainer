@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import contextlib
 import datetime as _dt
+import math
 import os
 import socket
 import time
@@ -48,6 +49,10 @@ __all__ = [
     "bar",
     "Timeline",
     "render_gantt",
+    "DeviceMesh",
+    "build_mesh",
+    "mesh_summary",
+    "render_mesh",
 ]
 
 # gloo can only run collectives on CPU tensors, so the "communication device"
@@ -176,6 +181,125 @@ def render_gantt(timeline: Timeline, world_size: int, width: int = 60) -> str:
     legend = f"{C.GREEN}# compute{C.RESET}  {C.YELLOW}= comm{C.RESET}  {C.GREY}. bubble{C.RESET}"
     lines.append(legend)
     return "\n".join(lines)
+
+
+# --------------------------------------------------------------------------- #
+# N-D device mesh: compose TP / EP / CP / FS / DP / PP onto one mesh
+# --------------------------------------------------------------------------- #
+# Inspired by "Visualizing 6D Mesh Parallelism". You hand `build_mesh` an ORDERED
+# dict of axis sizes, innermost (closest, fastest links) -> outermost (furthest):
+# the canonical order is TP, EP, CP, FS, DP, PP. It returns, for THIS rank, its
+# coordinate along every axis plus the process group it belongs to per axis.
+#
+# Rank decomposition (innermost axis varies fastest, so its ranks are contiguous):
+#     rank = sum_a coord[a] * stride[a],  stride grows from the innermost axis out.
+# A process group for axis `a` = the ranks that share every OTHER coordinate and
+# differ only along `a` (the "line" along that axis).
+@dataclass
+class DeviceMesh:
+    """A composed N-D device mesh. `groups[axis]` is None for degenerate (size-1) axes."""
+
+    sizes: dict[str, int]
+    coords: dict[str, int]
+    groups: dict[str, Any]
+    strides: dict[str, int]
+    rank: int
+    world_size: int
+
+    def coord_of(self, rank: int) -> dict[str, int]:
+        return {a: (rank // self.strides[a]) % self.sizes[a] for a in self.sizes}
+
+    def group_base(self, rank: int, axis: str) -> int:
+        """Lowest rank in `rank`'s line along `axis` (its group's representative)."""
+        c = (rank // self.strides[axis]) % self.sizes[axis]
+        return rank - c * self.strides[axis]
+
+    def group_members(self, rank: int, axis: str) -> list[int]:
+        base = self.group_base(rank, axis)
+        return [base + i * self.strides[axis] for i in range(self.sizes[axis])]
+
+
+def build_mesh(sizes: dict[str, int]) -> DeviceMesh:
+    """Build an N-D device mesh and this rank's per-axis process groups.
+
+    `sizes` is an ORDERED dict, innermost -> outermost, e.g.
+        {"TP": 2, "EP": 1, "CP": 2, "FS": 1, "DP": 2, "PP": 1}
+    Its product must equal the world size. Call this inside a `run(...)` after the
+    process group is initialized; every rank must call it with the SAME `sizes`
+    (dist.new_group is collective). Size-1 axes are skipped (group = None).
+    """
+    rank = dist.get_rank()
+    world = dist.get_world_size()
+    total = math.prod(sizes.values())
+    if total != world:
+        raise ValueError(f"mesh sizes {sizes} (product {total}) != world_size {world}")
+
+    axes = list(sizes.keys())
+    strides: dict[str, int] = {}
+    s = 1
+    for a in axes:
+        strides[a] = s
+        s *= sizes[a]
+
+    def coord(r: int) -> dict[str, int]:
+        return {a: (r // strides[a]) % sizes[a] for a in axes}
+
+    my = coord(rank)
+    groups: dict[str, Any] = {}
+    for a in axes:
+        if sizes[a] == 1:
+            groups[a] = None
+            continue
+        # group ranks by "all coords except a"; create each line collectively
+        lines: dict[tuple, list[int]] = {}
+        for r in range(world):
+            c = coord(r)
+            key = tuple((b, c[b]) for b in axes if b != a)
+            lines.setdefault(key, []).append(r)
+        my_key = tuple((b, my[b]) for b in axes if b != a)
+        my_group = None
+        for key in sorted(lines.keys()):
+            g = dist.new_group(ranks=lines[key])
+            if key == my_key:
+                my_group = g
+        groups[a] = my_group
+
+    return DeviceMesh(sizes, my, groups, strides, rank, world)
+
+
+def mesh_summary(mesh: DeviceMesh) -> str:
+    """A per-rank textual summary: each axis's size, this rank's coord, and its group."""
+    lines = [f"{C.BOLD}Device mesh (world={mesh.world_size}), innermost -> outermost:{C.RESET}"]
+    for a, n in mesh.sizes.items():
+        if n == 1:
+            lines.append(f"  {C.GREY}{a:<3} size=1   (degenerate, no communication){C.RESET}")
+        else:
+            members = mesh.group_members(mesh.rank, a)
+            lines.append(f"  {a:<3} size={n}   rank{mesh.rank} coord={mesh.coords[a]}   group={members}")
+    return "\n".join(lines)
+
+
+def render_mesh(mesh: DeviceMesh, highlight_axis: str | None = None) -> str:
+    """Render the whole world as a strip of rank cells; 'flash' one axis's groups in color.
+
+    When `highlight_axis` is given, ranks are colored by which group-along-that-axis they
+    belong to -- so you can see the mesh partition that a given collective communicates over.
+    """
+    palette = [C.GREEN, C.CYAN, C.YELLOW, C.MAGENTA, C.BLUE, C.RED]
+    active = bool(highlight_axis) and mesh.sizes.get(highlight_axis, 1) > 1
+    ordinal: dict[int, int] = {}
+    if active:
+        bases = sorted({mesh.group_base(r, highlight_axis) for r in range(mesh.world_size)})
+        ordinal = {b: i for i, b in enumerate(bases)}
+    cells = []
+    for r in range(mesh.world_size):
+        if active:
+            color = palette[ordinal[mesh.group_base(r, highlight_axis)] % len(palette)]
+            cells.append(f"{color}{r:2d}{C.RESET}")
+        else:
+            cells.append(f"{C.GREY}{r:2d}{C.RESET}")
+    head = f"{C.BOLD}flash {highlight_axis}{C.RESET}: groups along {highlight_axis} communicate\n" if highlight_axis else ""
+    return head + "[" + " ".join(cells) + "]"
 
 
 # --------------------------------------------------------------------------- #

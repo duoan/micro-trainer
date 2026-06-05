@@ -18,7 +18,7 @@ Principle in one line:
 Your battle zone:
     - `naive_moe_forward`: dutifully dispatch -> expert -> combine, with synchronous All-to-All throughout.
 
-Run: python 4_expert_parallel/naive_moe.py
+Run: python 4_expert_parallel/1_naive_moe.py
 """
 
 from __future__ import annotations
@@ -117,7 +117,7 @@ def run(rank: int, world_size: int, device: torch.device) -> None:
 
     makespan = timeline.makespan()
     rank0_print(rank, f"naive MoE makespan = {makespan * 1000:.1f} ms (comm and compute fully serialized)")
-    rank0_print(rank, "Note this number down and compare with lightning_moe.py's ASCII bar.")
+    rank0_print(rank, "Note this number down and compare with 2_lightning_moe.py's ASCII bar.")
 
 
 if __name__ == "__main__":

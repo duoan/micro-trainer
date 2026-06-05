@@ -17,9 +17,9 @@ Principle in one line (Chimera, SC'21 -- the academic predecessor of DeepSeek Du
 Your battle zone:
     - `chimera_schedule`: drive the two opposing 1F1B pipelines so each rank interleaves its
       down-stage and up-stage work; record Timeline spans showing the halved bubble, then
-      All-Reduce the two replicas' grads. Compare with deepseek_dualpipe.py (its successor).
+      All-Reduce the two replicas' grads. Compare with 6_deepseek_dualpipe.py (its successor).
 
-Run: python 3_pipeline_parallel/chimera.py
+Run: python 3_pipeline_parallel/5_chimera.py
 """
 
 from __future__ import annotations

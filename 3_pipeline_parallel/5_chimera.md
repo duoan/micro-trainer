@@ -43,16 +43,16 @@ Each rank reports its two stages, e.g. `holds down-stage 1 and up-stage 2`. Befo
 NotImplementedError: TODO: chimera_schedule -- hand-write the two combined opposing pipelines
 ```
 
-When implemented, the `[D:F2]` / `[U:B1]` conveyor log and `render_gantt` timeline should show a bubble roughly half that of `one_forward_backward.py`, and visibly the bidirectional shape that `deepseek_dualpipe.py` refines.
+When implemented, the `[D:F2]` / `[U:B1]` conveyor log and `render_gantt` timeline should show a bubble roughly half that of `2_one_forward_backward.py`, and visibly the bidirectional shape that `6_deepseek_dualpipe.py` refines.
 
 ## Your battle zone
 
-`chimera_schedule(...)` in `3_pipeline_parallel/chimera.py`: interleave the down and up 1F1B pipelines (per-direction pending queues, `send_tensor`/`recv_tensor` in the right directions), then call `sync_replica_grads(down_stage, up_stage, world_size)`.
+`chimera_schedule(...)` in `3_pipeline_parallel/5_chimera.py`: interleave the down and up 1F1B pipelines (per-direction pending queues, `send_tensor`/`recv_tensor` in the right directions), then call `sync_replica_grads(down_stage, up_stage, world_size)`.
 
 ## Run it
 
 ```bash
-python 3_pipeline_parallel/chimera.py
+python 3_pipeline_parallel/5_chimera.py
 ```
 
 ## Papers & further reading

@@ -81,11 +81,11 @@ Stage2: .  .  F0 F1 B0 F2 B1 F3 B2 F4 B3 F5 B4 F6 B5 F7 B6 B7
 Stage3: .  .  .  F0 B0 F1 B1 F2 B2 F3 B3 F4 B4 F5 B5 F6 B6 F7 B7
 ```
 
-Compare side-by-side with `gpipe.py`'s dashboard to see the tighter packing.
+Compare side-by-side with `1_gpipe.py`'s dashboard to see the tighter packing.
 
 ## Your battle zone
 
-Implement **`one_f_one_b_schedule(rank, world_size, stage, micro_inputs, device, timeline)`** in `3_pipeline_parallel/one_forward_backward.py`. Maintain a **queue** of forwarded micro-batches awaiting backward. Suggested inner helpers:
+Implement **`one_f_one_b_schedule(rank, world_size, stage, micro_inputs, device, timeline)`** in `3_pipeline_parallel/2_one_forward_backward.py`. Maintain a **queue** of forwarded micro-batches awaiting backward. Suggested inner helpers:
 
 - **`forward_one(m)`**: get/recv input → `stage(x)` → `log_state(rank, f"F{m}")` → `timeline.span(rank, f"F{m}")` → send to rank+1 or enqueue `(input, output)`.
 - **`backward_one(m)`**: last stage forms loss / others recv grad from rank+1 → `out.backward(grad)` → `log_state(rank, f"B{m}")` → `timeline.span(rank, f"B{m}")` → send input grad to rank−1.
@@ -100,7 +100,7 @@ Comm direction matches GPipe: forward **r → r+1**, backward **r ← r+1**, via
 ## Run it
 
 ```bash
-python 3_pipeline_parallel/one_forward_backward.py
+python 3_pipeline_parallel/2_one_forward_backward.py
 ```
 
 ## Papers & further reading

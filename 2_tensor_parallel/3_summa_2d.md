@@ -55,12 +55,12 @@ When correct, every rank prints `max error vs single-machine` ~`1e-6` — its ou
 
 ## Your battle zone
 
-One function in `2_tensor_parallel/summa_2d.py` — `summa_forward(...)`: loop $k=0\dots q-1$, `dist.broadcast` the $X$ block within `row_group` (src `row*q+k`) and the $W$ block within `col_group` (src `k*q+col`), accumulate `x_buf @ w_buf`. The row/column groups are pre-built in `build_grid_groups`.
+One function in `2_tensor_parallel/3_summa_2d.py` — `summa_forward(...)`: loop $k=0\dots q-1$, `dist.broadcast` the $X$ block within `row_group` (src `row*q+k`) and the $W$ block within `col_group` (src `k*q+col`), accumulate `x_buf @ w_buf`. The row/column groups are pre-built in `build_grid_groups`.
 
 ## Run it
 
 ```bash
-python 2_tensor_parallel/summa_2d.py   # world_size must be a perfect square
+python 2_tensor_parallel/3_summa_2d.py   # world_size must be a perfect square
 ```
 
 ## Papers & further reading

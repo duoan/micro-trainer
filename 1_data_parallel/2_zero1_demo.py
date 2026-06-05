@@ -18,7 +18,7 @@ Your battle zone (two TODOs below):
     - `reduce_average_gradients`: the same gradient averaging as DDP (warm-up).
     - `step_and_all_gather`: update only the params this rank owns, then All-Gather back.
 
-Run: python 1_data_parallel/zero1_demo.py
+Run: python 1_data_parallel/2_zero1_demo.py
 """
 
 from __future__ import annotations

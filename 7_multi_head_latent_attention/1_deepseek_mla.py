@@ -19,7 +19,7 @@ Your battle zone:
     - `compress_and_project`: compute the latent c_KV, then up-project to this rank's local
       Q, K, V head group.
 
-Run: python 7_multi_head_latent_attention/deepseek_mla.py
+Run: python 7_multi_head_latent_attention/1_deepseek_mla.py
 """
 
 from __future__ import annotations

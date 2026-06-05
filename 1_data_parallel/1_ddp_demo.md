@@ -65,7 +65,7 @@ After a correct `synchronize_gradients`, all ranks print per-step local loss (wh
 
 ## Your battle zone
 
-Implement **`synchronize_gradients(model, world_size)`** in `1_data_parallel/ddp_demo.py`. For each `p` in `model.parameters()` where `p.grad` is not `None`:
+Implement **`synchronize_gradients(model, world_size)`** in `1_data_parallel/1_ddp_demo.py`. For each `p` in `model.parameters()` where `p.grad` is not `None`:
 
 1. Move `p.grad` to **`COMM_DEVICE`** (CPU — gloo cannot All-Reduce MPS tensors).
 2. Call `dist.all_reduce(grad_cpu, op=dist.ReduceOp.SUM)`.
@@ -77,7 +77,7 @@ Implement **`synchronize_gradients(model, world_size)`** in `1_data_parallel/ddp
 ## Run it
 
 ```bash
-python 1_data_parallel/ddp_demo.py
+python 1_data_parallel/1_ddp_demo.py
 ```
 
 ## Papers & further reading

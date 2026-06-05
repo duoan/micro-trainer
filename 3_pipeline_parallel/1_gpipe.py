@@ -19,7 +19,7 @@ Your battle zone:
     - `gpipe_schedule`: implement the "all forwards -> all backwards" schedule,
       hand-writing dist.send / dist.recv.
 
-Run: python 3_pipeline_parallel/gpipe.py
+Run: python 3_pipeline_parallel/1_gpipe.py
 """
 
 from __future__ import annotations

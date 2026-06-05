@@ -21,7 +21,7 @@ Your battle zone:
     - `one_f_one_b_schedule`: implement the warmup / steady / cooldown state machine,
       and print a live [F0][F1][B0]... state-machine log (the conveyor matrix).
 
-Run: python 3_pipeline_parallel/one_forward_backward.py
+Run: python 3_pipeline_parallel/2_one_forward_backward.py
 """
 
 from __future__ import annotations
@@ -135,7 +135,7 @@ def run(rank: int, world_size: int, device: torch.device) -> None:
     one_f_one_b_schedule(rank, world_size, stage, micro_inputs, device, timeline)
 
     rank0_print(rank, render_gantt(timeline, world_size))
-    rank0_print(rank, "1F1B: tighter compute blocks, fewer bubbles, stabler memory. Compare with gpipe.py!")
+    rank0_print(rank, "1F1B: tighter compute blocks, fewer bubbles, stabler memory. Compare with 1_gpipe.py!")
 
 
 if __name__ == "__main__":

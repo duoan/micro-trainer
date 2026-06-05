@@ -17,7 +17,7 @@ Your battle zone:
     - `forward`: each rank computes Y_i with its local W_i, then All-Gather along
       dim=-1 into the full Y.
 
-Run: python 2_tensor_parallel/column_parallel.py
+Run: python 2_tensor_parallel/1_column_parallel.py
 """
 
 from __future__ import annotations

@@ -73,7 +73,7 @@ After fixing that, it stops at the second TODO in `step_and_all_gather`. When bo
 
 ## Your battle zone
 
-Two functions in `1_data_parallel/zero1_demo.py`:
+Two functions in `1_data_parallel/2_zero1_demo.py`:
 
 **1. `reduce_average_gradients(model, world_size)`** — warm-up, same as DDP. For each `p.grad`: move to **`COMM_DEVICE`**, `dist.all_reduce(..., op=dist.ReduceOp.SUM)`, divide by `world_size`, write back to `p.grad` on `p.device`.
 
@@ -86,7 +86,7 @@ Using per-parameter broadcast from the owner is a simplification of All-Gather; 
 ## Run it
 
 ```bash
-python 1_data_parallel/zero1_demo.py
+python 1_data_parallel/2_zero1_demo.py
 ```
 
 ## Papers & further reading

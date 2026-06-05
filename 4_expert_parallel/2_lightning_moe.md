@@ -81,11 +81,11 @@ Then **`print_compare_bar`** draws an ASCII comparison using **`bar(value, total
   Tile Overlap saved ~44% of the time -- comm latency hidden behind compute!
 ```
 
-Plug in the real naive makespan from `naive_moe.py` (the demo ships a placeholder multiplier until you run both). Timeline spans should show comm waits **shorter** relative to compute when overlap works — comm `wait()` time is reduced by elapsed compute.
+Plug in the real naive makespan from `1_naive_moe.py` (the demo ships a placeholder multiplier until you run both). Timeline spans should show comm waits **shorter** relative to compute when overlap works — comm `wait()` time is reduced by elapsed compute.
 
 ## Your battle zone
 
-Implement **`lightning_moe_forward(rank, world_size, expert, tokens, device, timeline)`** in `4_expert_parallel/lightning_moe.py`. The `# TODO(you)` currently raises `NotImplementedError`.
+Implement **`lightning_moe_forward(rank, world_size, expert, tokens, device, timeline)`** in `4_expert_parallel/2_lightning_moe.py`. The `# TODO(you)` currently raises `NotImplementedError`.
 
 Use **`split_tiles(tokens, NUM_TILES)`** to chunk the batch. Pattern:
 
@@ -106,10 +106,10 @@ Constants: `WORLD_SIZE=4`, `TOKENS_PER_EXPERT=32`, `NUM_TILES=4`, `DIM=64`.
 ## Run it
 
 ```bash
-python 4_expert_parallel/lightning_moe.py
+python 4_expert_parallel/2_lightning_moe.py
 ```
 
-Run **`naive_moe.py`** first and paste its makespan into `print_compare_bar` for a real side-by-side bar.
+Run **`1_naive_moe.py`** first and paste its makespan into `print_compare_bar` for a real side-by-side bar.
 
 ## Papers & further reading
 

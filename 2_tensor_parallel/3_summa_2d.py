@@ -21,7 +21,7 @@ Your battle zone:
     - `summa_forward`: the broadcast-multiply-accumulate loop over the q grid steps.
       The row/column process groups are already built for you in `build_grid_groups`.
 
-Run: python 2_tensor_parallel/summa_2d.py   (world_size must be a perfect square)
+Run: python 2_tensor_parallel/3_summa_2d.py   (world_size must be a perfect square)
 """
 
 from __future__ import annotations

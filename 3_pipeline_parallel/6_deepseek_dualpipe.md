@@ -14,7 +14,7 @@
 
 ## The problem
 
-1F1B dramatically cuts peak activation memory versus GPipe, but the asymptotic bubble fraction is unchanged: $(p-1)/(m+p-1)$. During warmup and cooldown, stages at one end of the pipe still sit idle while the other end fills or drains. DeepSeek-V3's **DualPipe** attacks that idle time directly: instead of one conveyor belt, run **two** belts in opposite directions through the same stage stack. While stream A's activation is in flight toward higher ranks, stream B's chunk can compute on the same stage — and vice versa. The result is a timeline where bubble gaps nearly vanish, at the price of holding **two** parameter/activation copies per stage. In production, DualPipe is combined with MoE so communication from one stream hides behind compute from the other. This teaching demo strips that down to the bidirectional 1F1B-style state machine and a `Timeline` + ASCII Gantt so you can **see** the bubble shrink versus `gpipe.py` and `one_forward_backward.py`.
+1F1B dramatically cuts peak activation memory versus GPipe, but the asymptotic bubble fraction is unchanged: $(p-1)/(m+p-1)$. During warmup and cooldown, stages at one end of the pipe still sit idle while the other end fills or drains. DeepSeek-V3's **DualPipe** attacks that idle time directly: instead of one conveyor belt, run **two** belts in opposite directions through the same stage stack. While stream A's activation is in flight toward higher ranks, stream B's chunk can compute on the same stage — and vice versa. The result is a timeline where bubble gaps nearly vanish, at the price of holding **two** parameter/activation copies per stage. In production, DualPipe is combined with MoE so communication from one stream hides behind compute from the other. This teaching demo strips that down to the bidirectional 1F1B-style state machine and a `Timeline` + ASCII Gantt so you can **see** the bubble shrink versus `1_gpipe.py` and `2_one_forward_backward.py`.
 
 ## Algorithm
 
@@ -86,7 +86,7 @@ This is a **scheduling skeleton** — there is no numeric correctness check; the
 
 ## Your battle zone
 
-Implement **`dualpipe_schedule(rank, world_size, stage, micro_inputs_a, micro_inputs_b, device, timeline)`** in `3_pipeline_parallel/deepseek_dualpipe.py`. The skeleton raises `NotImplementedError` at `# TODO(you)`; you fill in the bidirectional warmup / steady / cooldown state machine.
+Implement **`dualpipe_schedule(rank, world_size, stage, micro_inputs_a, micro_inputs_b, device, timeline)`** in `3_pipeline_parallel/6_deepseek_dualpipe.py`. The skeleton raises `NotImplementedError` at `# TODO(you)`; you fill in the bidirectional warmup / steady / cooldown state machine.
 
 Suggested inner helpers:
 
@@ -104,7 +104,7 @@ Wrap each compute chunk with `timeline.span(rank, tag)` and call `log_state(rank
 ## Run it
 
 ```bash
-python 3_pipeline_parallel/deepseek_dualpipe.py
+python 3_pipeline_parallel/6_deepseek_dualpipe.py
 ```
 
 ## Papers & further reading

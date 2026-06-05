@@ -18,7 +18,7 @@ Your battle zone:
     - `pipedream_schedule`: run steady-state 1F1B WITHOUT a global flush, and manage the
       per-micro-batch weight stash (stash on forward, restore on backward, then step).
 
-Run: python 3_pipeline_parallel/pipedream.py
+Run: python 3_pipeline_parallel/4_pipedream.py
 """
 
 from __future__ import annotations

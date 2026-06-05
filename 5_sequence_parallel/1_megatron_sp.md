@@ -86,7 +86,7 @@ The demo builds identical full tensors via `build_full_inputs_and_weights`, comp
 
 ## Your battle zone
 
-Two functions in `5_sequence_parallel/megatron_sp.py` raise `NotImplementedError`:
+Two functions in `5_sequence_parallel/1_megatron_sp.py` raise `NotImplementedError`:
 
 1. **`enter_tp_region(x_local, world_size, device)`** — g operator:
    - Allocate `x_full` of shape `[SEQ, DIM]` on **`COMM_DEVICE`** (`cpu`).
@@ -103,7 +103,7 @@ Golden rule: compute on MPS, move to **`COMM_DEVICE`** before gloo collectives, 
 ## Run it
 
 ```bash
-python 5_sequence_parallel/megatron_sp.py
+python 5_sequence_parallel/1_megatron_sp.py
 ```
 
 ## Papers & further reading

@@ -21,7 +21,7 @@ Your battle zone (two TODOs):
     - `dp_average`: average a tensor across the DATA-parallel group only (not the whole world).
     The 3D mesh of process groups is already built for you in `build_3d_mesh`.
 
-Run: python 8_hybrid_parallel/three_d_parallel.py   (world_size must equal PP*DP*TP)
+Run: python 8_hybrid_parallel/1_three_d_parallel.py   (world_size must equal PP*DP*TP)
 """
 
 from __future__ import annotations

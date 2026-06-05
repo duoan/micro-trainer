@@ -87,7 +87,7 @@ Rank 0's closing note points you to the next lesson: **1F1B** packs compute tigh
 
 ## Your battle zone
 
-Implement **`gpipe_schedule(rank, world_size, stage, micro_inputs, device, timeline)`** in `3_pipeline_parallel/gpipe.py`. The skeleton raises `NotImplementedError`; you fill in:
+Implement **`gpipe_schedule(rank, world_size, stage, micro_inputs, device, timeline)`** in `3_pipeline_parallel/1_gpipe.py`. The skeleton raises `NotImplementedError`; you fill in:
 
 **Phase A — all forwards** (loop `m in range(NUM_MICRO)`):
 - Rank 0 loads `micro_inputs[m]`; others `recv_tensor` from rank−1.
@@ -105,7 +105,7 @@ Use the provided **`send_tensor`** / **`recv_tensor`** helpers — do not call `
 ## Run it
 
 ```bash
-python 3_pipeline_parallel/gpipe.py
+python 3_pipeline_parallel/1_gpipe.py
 ```
 
 ## Papers & further reading

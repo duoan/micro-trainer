@@ -90,7 +90,7 @@ Then an ASCII comparison bar via **`bar(value, total)`**:
 
 ## Your battle zone
 
-Implement **`deepep_moe_forward(rank, world_size, expert, tokens, device, timeline)`** in `4_expert_parallel/deepseek_deepep.py`. The `# TODO(you)` currently raises `NotImplementedError`.
+Implement **`deepep_moe_forward(rank, world_size, expert, tokens, device, timeline)`** in `4_expert_parallel/4_deepseek_deepep.py`. The `# TODO(you)` currently raises `NotImplementedError`.
 
 Provided helpers — use them, do not reimplement:
 
@@ -120,7 +120,7 @@ Constants: `WORLD_SIZE=4`, `TOKENS_PER_EXPERT=32`, `NUM_CHUNKS=4`, `DIM=64`, `IN
 ## Run it
 
 ```bash
-python 4_expert_parallel/deepseek_deepep.py
+python 4_expert_parallel/4_deepseek_deepep.py
 ```
 
 ## Papers & further reading

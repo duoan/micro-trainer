@@ -19,7 +19,7 @@ accumulation is yours.
 Your battle zone:
     - `ring_attention`: loop n steps, ring-rotating (K, V) and accumulating with online softmax.
 
-Run: python 6_context_parallel/ring_attention.py
+Run: python 6_context_parallel/1_ring_attention.py
 """
 
 from __future__ import annotations

@@ -76,7 +76,7 @@ The demo computes a single-machine reference $Y_{\text{ref}} = X_{\text{full}} W
 
 ## Your battle zone
 
-Implement **`row_parallel_forward(x_shard, w_shard, rank, world_size, device)`** in `2_tensor_parallel/row_parallel.py`. The skeleton raises `NotImplementedError`; you fill in:
+Implement **`row_parallel_forward(x_shard, w_shard, rank, world_size, device)`** in `2_tensor_parallel/2_row_parallel.py`. The skeleton raises `NotImplementedError`; you fill in:
 
 1. **Local matmul**: `y_partial = x_shard @ w_shard` → shape `[BATCH, OUT_DIM]` (full output shape on every rank).
 2. **All-Reduce**: Move `y_partial` to **`COMM_DEVICE`** (`cpu`), then `dist.all_reduce(y_partial, op=dist.ReduceOp.SUM)`.
@@ -87,7 +87,7 @@ Unlike column parallel, there is no gather list or concatenation — one tensor 
 ## Run it
 
 ```bash
-python 2_tensor_parallel/row_parallel.py
+python 2_tensor_parallel/2_row_parallel.py
 ```
 
 ## Papers & further reading

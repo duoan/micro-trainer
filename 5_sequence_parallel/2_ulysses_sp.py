@@ -22,7 +22,7 @@ Your battle zone (two TODOs):
     - `all2all_seq_to_head`: All-to-All that turns [S/n, HID] into [S, HID/n].
     - `all2all_head_to_seq`: the inverse All-to-All, [S, HID/n] back into [S/n, HID].
 
-Run: python 5_sequence_parallel/ulysses_sp.py
+Run: python 5_sequence_parallel/2_ulysses_sp.py
 """
 
 from __future__ import annotations
