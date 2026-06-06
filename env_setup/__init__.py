@@ -7,8 +7,12 @@ can focus purely on hand-writing the distributed operators and scheduling logic.
 It auto-adapts to whatever hardware you run on:
 
     * NVIDIA GPU box  -> backend "nccl", each rank binds its own `cuda:i`.
-    * Apple Silicon   -> backend "gloo", all ranks share one `mps` device.
-    * Plain CPU       -> backend "gloo", everything on `cpu`.
+    * Mac / CPU box    -> backend "gloo", everything runs on `cpu`.
+
+(We deliberately do NOT use Apple's MPS: the toy models are tiny so MPS buys
+nothing, and gloo cannot run collectives on MPS tensors -- which would force a
+constant MPS<->CPU shuffle that only obscures the real lessons. Plain CPU keeps
+``device == COMM_DEVICE``, so the comm pattern is identical to the GPU/NCCL case.)
 
 You can force a choice with the env var ``MICRO_TRAINER_BACKEND=gloo|nccl``.
 
@@ -19,16 +23,16 @@ It exposes a few core things:
         The backend is auto-detected (override with `backend=...`).
 
     bind_device(rank)
-        Bind a compute device to each rank: `cuda:rank` on a GPU box, a shared
-        `mps` on Apple Silicon, or `cpu`.
+        Bind a compute device to each rank: `cuda:rank` on a GPU box, else `cpu`.
 
     COMM_DEVICE
         A very important constant: where collective tensors must live.
         * Under NCCL it equals the rank's CUDA device, so the golden-rule move
           ``tensor.to(COMM_DEVICE)`` is a free no-op (NCCL talks GPU directly).
-        * Under gloo it is `cpu`, because gloo cannot run collectives on `mps`
-          tensors. So "compute on mps, move to COMM_DEVICE before communicating"
-          is the rule on Mac -- and it stays correct verbatim on a GPU box too.
+        * Under gloo it is `cpu` -- and since compute also runs on `cpu`, the move
+          is again a no-op. So "compute on device, ``.to(COMM_DEVICE)`` before
+          communicating" stays in the code purely for portability: it's the bridge
+          that does real work only if you force gloo on top of CUDA tensors.
 
 It also ships a set of hand-rolled terminal color / printing helpers so you can
 draw flashy Timeline dashboards.
@@ -89,9 +93,9 @@ def default_backend() -> str:
 
 # Where collective tensors must live. Under NCCL that is the current CUDA device
 # (so `tensor.to(COMM_DEVICE)` is a free no-op and collectives run on the GPU);
-# under gloo it is cpu (gloo cannot communicate `mps`/`cuda` tensors via mps).
-# `torch.device("cuda")` (no index) resolves to whatever `torch.cuda.set_device`
-# picked for this rank, so a single constant works correctly across all ranks.
+# under gloo it is cpu -- and since we compute on cpu too, that move is also a
+# no-op. `torch.device("cuda")` (no index) resolves to whatever
+# `torch.cuda.set_device` picked for this rank, so one constant works everywhere.
 COMM_DEVICE = torch.device("cuda") if default_backend() == "nccl" else torch.device("cpu")
 
 
@@ -346,17 +350,13 @@ def bind_device(rank: int) -> torch.device:
     * GPU box: each process owns one GPU. We call `torch.cuda.set_device(i)` and
       return `cuda:i` (i = rank, wrapped by device_count so it still runs when
       you simulate more ranks than you have GPUs -- handy for teaching).
-    * Apple Silicon: there is a single shared MPS device in unified memory, so
-      all processes share it. This conveniently lets you watch "multiple ranks
-      running concurrently" at very low cost.
-    * Otherwise: plain CPU.
+    * Otherwise (Mac / CPU box): plain CPU. We intentionally skip MPS -- the toy
+      models gain nothing from it, and gloo can't communicate MPS tensors anyway.
     """
     if torch.cuda.is_available():
         idx = rank % torch.cuda.device_count()
         torch.cuda.set_device(idx)
         return torch.device("cuda", idx)
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
     return torch.device("cpu")
 
 
@@ -438,10 +438,8 @@ def launch_teaching_cluster(
     backend = backend or default_backend()
     port = str(_find_free_port(base_port))
 
-    if backend == "nccl":
+    if torch.cuda.is_available():
         accel = f"cuda x{torch.cuda.device_count()}"
-    elif torch.backends.mps.is_available():
-        accel = "mps"
     else:
         accel = "cpu"
 
@@ -457,8 +455,6 @@ def launch_teaching_cluster(
             f"{C.YELLOW}Only {torch.cuda.device_count()} GPU(s) for {world_size} ranks; "
             f"ranks will share GPUs round-robin (fine for small teaching runs).{C.RESET}"
         )
-    elif backend == "gloo" and not torch.backends.mps.is_available() and not torch.cuda.is_available():
-        print(f"{C.YELLOW}No accelerator detected, running on CPU (works the same, just slower).{C.RESET}")
 
     # Use spawn to start child processes; join=True blocks until all ranks exit.
     mp.spawn(

@@ -8,7 +8,7 @@ On a Mac, inter-process communication over unified memory is absurdly fast — s
 
 The naive and lightning MoE demos need a controllable delay to expose the gap between **serial waiting** and **Tile overlap**. This module is the foundation tool: it injects modeled latency around real `dist.all_to_all_single` calls so you can see the night-and-day difference on a laptop.
 
-The golden rule still applies: compute on **MPS**, but gloo collectives require CPU tensors. All communication buffers live on **`COMM_DEVICE`** (= CPU).
+The golden rule still applies: compute on the **`device`**; all communication buffers live on **`COMM_DEVICE`** (the device collectives run on).
 
 ## What it provides
 
@@ -68,7 +68,7 @@ dispatched = torch.empty_like(tokens, device=COMM_DEVICE)
 with timeline.span(rank, "dispatch", kind="comm"):
     slow_all_to_all_single(dispatched, tokens, DEFAULT_LINK)
 # dispatched now holds tokens destined for this rank's expert
-out = expert(dispatched.to(device))  # compute on MPS
+out = expert(dispatched.to(device))  # compute on the device
 ```
 
 ### Asynchronous (lightning MoE)
@@ -77,7 +77,7 @@ out = expert(dispatched.to(device))  # compute on MPS
 buf0 = torch.empty_like(tile0, device=COMM_DEVICE)
 work0 = slow_all_to_all_single_async(buf0, tile0, DEFAULT_LINK)
 
-# ... fire next tile's async dispatch, then do expert compute on MPS ...
+# ... fire next tile's async dispatch, then do expert compute on the device ...
 
 with timeline.span(rank, "dispatch_wait", kind="comm"):
     work0.wait()
@@ -109,7 +109,7 @@ Truly modeling both **hardware DMA overlap** and **network latency** on a Mac is
 3. If `remaining > 0`, sleep that long (latency not yet "eaten" by intervening compute)
 4. Call `self._work.wait()` on the real dist work handle
 
-If you fire tile *t+1*'s dispatch and then spend time in `expert(buf_t)` on MPS, that compute time reduces the sleep at `.wait()` — exactly the comm-compute overlap lightning MoE targets. The **shape** of overlap is real; the **amount** of latency is simulated.
+If you fire tile *t+1*'s dispatch and then spend time in `expert(buf_t)` on the device, that compute time reduces the sleep at `.wait()` — exactly the comm-compute overlap lightning MoE targets. The **shape** of overlap is real; the **amount** of latency is simulated.
 
 ## Papers & further reading
 

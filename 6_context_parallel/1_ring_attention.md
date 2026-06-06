@@ -93,7 +93,7 @@ Implement **`ring_attention(q_local, k_local, v_local, rank, world_size, device)
    - If not the last step: pack `kv = torch.cat([k_blk, v_blk], dim=-1)`, call `ring_exchange(kv, rank, world_size, device)` (communicates on **`COMM_DEVICE`**), split into `k_blk, v_blk`.
 4. Return `acc / denom`.
 
-Helpers `ring_exchange` and `online_softmax_update` are provided. Remember: compute on MPS, but ring sends/recvs use **`COMM_DEVICE`** (`cpu`) to satisfy gloo.
+Helpers `ring_exchange` and `online_softmax_update` are provided. Remember: compute on `device`, but ring sends/recvs use **`COMM_DEVICE`** (the comm device).
 
 ## Run it
 

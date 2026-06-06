@@ -80,9 +80,9 @@ Implement **`column_parallel_forward(x, w_shard, rank, world_size, device)`** in
 1. **Local matmul**: `y_local = x @ w_shard` → shape `[BATCH, OUT_DIM / world_size]`.
 2. **Prepare gather list**: `world_size` empty tensors on **`COMM_DEVICE`** (`cpu`), each matching `y_local`'s shape.
 3. **All-Gather**: `dist.all_gather(gathered, y_local.to(COMM_DEVICE))`.
-4. **Concatenate and return**: `torch.cat(gathered, dim=-1)`, move back to the MPS compute `device`.
+4. **Concatenate and return**: `torch.cat(gathered, dim=-1)`, move back to the compute `device`.
 
-Remember the golden rule: compute on MPS, move to **`COMM_DEVICE`** before gloo collectives, move back after.
+Remember the golden rule: compute on `device`, move to **`COMM_DEVICE`** before collectives, move back after (a no-op on CPU/NCCL, but it keeps the code portable).
 
 ## Run it
 

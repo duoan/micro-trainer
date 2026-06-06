@@ -52,7 +52,7 @@ sequenceDiagram
     participant R2 as Rank 2
     participant R3 as Rank 3
 
-    Note over R0,R3: Forward — local routing + expert compute (MPS)
+    Note over R0,R3: Forward — local routing + expert compute (device)
     R0->>R0: deepseek_moe_forward → local_counts_0
     R1->>R1: deepseek_moe_forward → local_counts_1
     R2->>R2: deepseek_moe_forward → local_counts_2
@@ -75,7 +75,7 @@ sequenceDiagram
     R3->>R3: update_expert_bias
 ```
 
-Golden rule: compute on **MPS**; gloo collectives require CPU tensors on **COMM_DEVICE**.
+Golden rule: compute on the **`device`**; collectives run on tensors moved to **COMM_DEVICE**.
 
 ## What you'll see
 

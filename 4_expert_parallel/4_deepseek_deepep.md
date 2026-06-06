@@ -28,7 +28,7 @@ Let chunks be $C_0, \ldots, C_{K-1}$ with $K$ = `NUM_CHUNKS`.
 2. **Steady state** — For each chunk index $t \in [0, K)$:
    - If $t + 1 < K$, fire async dispatch for chunk $t+1$ (inter-node, slow — overlaps with upcoming compute).
    - `d_work[t].wait()` inside a comm timeline span — tops up only remaining simulated latency.
-   - `out_t = expert(disp[t].to(device))` inside a compute span on **MPS**.
+   - `out_t = expert(disp[t].to(device))` inside a compute span on the **`device`**.
    - Fire async combine for `out_t`:
      - `comb_t = empty_like(out_t)` on **COMM_DEVICE**
      - `c_work[t] = slow_all_to_all_single_async(comb_t, out_t, INTER_NODE)`
@@ -51,7 +51,7 @@ sequenceDiagram
     Note over Rank,NIC: Steady — chunk t (both A2A stages overlap compute)
     Rank->>NIC: slow_all_to_all_single_async(C_{t+1}) [dispatch t+1, fire early]
     Rank->>NIC: d_work[t].wait() [comm span]
-    Rank->>Rank: expert(disp[t]) on MPS [compute span — hides dispatch t+1]
+    Rank->>Rank: expert(disp[t]) on device [compute span — hides dispatch t+1]
     Rank->>NIC: slow_all_to_all_single_async(out_t) [combine t, fire async]
     Rank->>NIC: c_work[t-1].wait() [comm span — combine t-1 finishes]
 
@@ -113,7 +113,7 @@ chunks = split_chunks(tokens, NUM_CHUNKS)
 # Epilogue: wait last combine, torch.cat all comb chunks, return .to(device)
 ```
 
-Key imports: `LinkProfile`, `slow_all_to_all_single_async` from `topology_sim`; **`COMM_DEVICE`**, **`Timeline`**, **`bar`** from `env_setup`. Compute on **MPS** (`device`); all All-to-All buffers on **COMM_DEVICE**.
+Key imports: `LinkProfile`, `slow_all_to_all_single_async` from `topology_sim`; **`COMM_DEVICE`**, **`Timeline`**, **`bar`** from `env_setup`. Compute on the **`device`**; all All-to-All buffers on **COMM_DEVICE**.
 
 Constants: `WORLD_SIZE=4`, `TOKENS_PER_EXPERT=32`, `NUM_CHUNKS=4`, `DIM=64`, `INTRA_NODE` (2 ms), `INTER_NODE` (20 ms).
 

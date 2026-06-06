@@ -109,9 +109,9 @@ Implement **`compress_and_project(x, w, rank, device)`** in `7_multi_head_latent
 4. **Project Q for this rank's head slice**: `q = (x @ w["W_Q"][:, sl]).view(SEQ, HEADS_PER_RANK, HEAD_DIM)`.
 5. **Return** `(q, k, v)`.
 
-No communication in this function — it is local compute on the MPS `device`. Helpers **`local_attention`** (per-head softmax attention) and **`gather_heads`** (All-Gather on **`COMM_DEVICE`**, then concat) are already provided.
+No communication in this function — it is local compute on the `device`. Helpers **`local_attention`** (per-head softmax attention) and **`gather_heads`** (All-Gather on **`COMM_DEVICE`**, then concat) are already provided.
 
-Remember the golden rule: compute on MPS, move to **`COMM_DEVICE`** before gloo collectives, move back after.
+Remember the golden rule: compute on `device`, move to **`COMM_DEVICE`** before collectives, move back after (a no-op on CPU/NCCL, kept for portability).
 
 ## Run it
 

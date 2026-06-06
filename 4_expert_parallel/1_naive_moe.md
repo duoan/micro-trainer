@@ -26,7 +26,7 @@ Assume **world_size** = *E* experts (one per rank). Each rank holds local tokens
    - Output: `dispatched` on rank *r* — all tokens from the cluster destined for expert *r*.
 2. **Expert** — Local FFN forward on received tokens:
    $$y = \mathrm{ReLU}(W x + b)$$
-   Computed on **MPS**; only the tokens this rank's expert owns.
+   Computed on the **`device`**; only the tokens this rank's expert owns.
 3. **Combine** — All-to-All sends expert outputs back to origin ranks:
    - Input: expert outputs (same segmented layout).
    - Collective: **All-to-All** (reverse routing).
@@ -49,7 +49,7 @@ sequenceDiagram
     R2->>R2: slow_all_to_all_single (wait)
     R3->>R3: slow_all_to_all_single (wait)
 
-    Note over R0,R3: Expert — local FFN (compute on MPS)
+    Note over R0,R3: Expert — local FFN (compute on device)
     R0->>R0: expert(dispatched)
     R1->>R1: expert(dispatched)
     R2->>R2: expert(dispatched)
@@ -62,7 +62,7 @@ sequenceDiagram
     R3->>R3: slow_all_to_all_single (wait)
 ```
 
-Comm tensors use **COMM_DEVICE** (CPU); expert compute uses **MPS**.
+Comm tensors use **COMM_DEVICE**; expert compute uses the **`device`**.
 
 ## What you'll see
 
@@ -89,14 +89,14 @@ Implement **`naive_moe_forward(rank, world_size, expert, tokens, device, timelin
 1. **Dispatch** (synchronous):
    - `dispatched = torch.empty_like(tokens, device=COMM_DEVICE)`
    - Wrap `slow_all_to_all_single(dispatched, tokens, DEFAULT_LINK)` in `timeline.span(rank, "dispatch", kind="comm")`.
-2. **Expert** (compute on MPS):
+2. **Expert** (compute on `device`):
    - Wrap `out = expert(dispatched.to(device))` in `timeline.span(rank, "expert", kind="compute")`.
 3. **Combine** (synchronous):
    - `combined = torch.empty_like(out, device=COMM_DEVICE)`
    - Wrap `slow_all_to_all_single(combined, out, DEFAULT_LINK)` in `timeline.span(rank, "combine", kind="comm")`.
 4. Return `combined.to(device)`.
 
-Move tensors to **COMM_DEVICE** before every All-to-All; move back to **device** (MPS) for expert compute. The three steps must be strictly serial — zero overlap.
+Move tensors to **COMM_DEVICE** before every All-to-All; move back to **`device`** for expert compute. The three steps must be strictly serial — zero overlap.
 
 ## Run it
 

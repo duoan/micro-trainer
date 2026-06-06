@@ -60,7 +60,7 @@ sequenceDiagram
     S1->>S0: B grad
 ```
 
-As in GPipe, compute runs on **MPS**; `send_tensor` / `recv_tensor` shuttle through **`COMM_DEVICE`** (CPU) for gloo compatibility.
+As in GPipe, compute runs on the **`device`**; `send_tensor` / `recv_tensor` shuttle through **`COMM_DEVICE`** (the comm device), keeping the code identical under gloo and NCCL.
 
 ## What you'll see
 

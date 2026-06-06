@@ -53,7 +53,7 @@ sequenceDiagram
     R2->>R2: X full (S × D)
     R3->>R3: X full (S × D)
 
-    Note over R0,R3: TP region — column + row parallel matmuls (local on MPS)
+    Note over R0,R3: TP region — column + row parallel matmuls (local on device)
     R0->>R0: H₀ = ReLU(X @ A₀), Z₀ = H₀ @ B₀
     R1->>R1: H₁ = ReLU(X @ A₁), Z₁ = H₁ @ B₁
     R2->>R2: H₂ = ReLU(X @ A₂), Z₂ = H₂ @ B₂
@@ -98,7 +98,7 @@ Two functions in `5_sequence_parallel/1_megatron_sp.py` raise `NotImplementedErr
    - `dist.reduce_scatter_tensor(z_local, z_partial.to(COMM_DEVICE).contiguous(), op=dist.ReduceOp.SUM)`.
    - Return `z_local.to(device)`.
 
-Golden rule: compute on MPS, move to **`COMM_DEVICE`** before gloo collectives, move back after. Column- and row-parallel matmuls between the two TODOs are already wired from Module 2.
+Golden rule: compute on `device`, move to **`COMM_DEVICE`** before collectives, move back after (a no-op on CPU/NCCL, kept for portability). Column- and row-parallel matmuls between the two TODOs are already wired from Module 2.
 
 ## Run it
 

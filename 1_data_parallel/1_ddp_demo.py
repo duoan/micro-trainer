@@ -74,8 +74,8 @@ def synchronize_gradients(model: nn.Module, world_size: int) -> None:
 
     ============================ YOUR BATTLE ZONE ============================
     What to do: iterate over model.parameters(), and for each p.grad:
-        1. Move it to COMM_DEVICE (gloo only accepts cpu tensors!).
-        2. dist.all_reduce(grad_cpu, op=dist.ReduceOp.SUM)
+        1. Move it to COMM_DEVICE (the device collectives run on).
+        2. dist.all_reduce(grad, op=dist.ReduceOp.SUM)
         3. Divide by world_size to get the averaged gradient.
         4. Write it back into p.grad (moved back to p's device).
 

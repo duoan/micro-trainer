@@ -14,7 +14,7 @@
 
 Naive MoE dispatches **all** tokens, waits for the full cross-machine latency, computes **all** expert outputs, then waits again on combine. Communication and compute are cleanly separated — and during every All-to-All, compute units stare at the network.
 
-Production MoE systems (MegaScale, Tutel, FasterMoE) attack this with **Tile overlap**: treat the batch as a sequence of smaller tiles and overlap async dispatch with expert compute. By the time tile *t*'s FFN finishes on MPS, tile *t+1*'s data has roughly arrived. The communication bubble gets filled by useful compute. This demo implements that micro-pipeline by hand so you can measure the makespan gap against naive_moe on the same simulated 20 ms link.
+Production MoE systems (MegaScale, Tutel, FasterMoE) attack this with **Tile overlap**: treat the batch as a sequence of smaller tiles and overlap async dispatch with expert compute. By the time tile *t*'s FFN finishes on the device, tile *t+1*'s data has roughly arrived. The communication bubble gets filled by useful compute. This demo implements that micro-pipeline by hand so you can measure the makespan gap against naive_moe on the same simulated 20 ms link.
 
 ## Algorithm
 
@@ -47,7 +47,7 @@ sequenceDiagram
     Note over Rank,NIC: Steady — pipeline tile t
     Rank->>NIC: slow_all_to_all_single_async(T_{t+1}) [fire next]
     Rank->>NIC: work_t.wait() [comm span]
-    Rank->>Rank: expert(buf_t) on MPS [compute span — hides T_{t+1} latency]
+    Rank->>Rank: expert(buf_t) on device [compute span — hides T_{t+1} latency]
 
     Note over Rank,NIC: Steady — repeat for t = 0 .. K-2
 
@@ -99,7 +99,7 @@ tiles = split_tiles(tokens, NUM_TILES)
 # Epilogue: return torch.cat(out_list, dim=0)  # extend with combine pipeline if desired
 ```
 
-Key imports: `slow_all_to_all_single_async`, `DEFAULT_LINK` from `topology_sim`; **`COMM_DEVICE`** from `env_setup` for all All-to-All buffers. Compute stays on **MPS** (`device`).
+Key imports: `slow_all_to_all_single_async`, `DEFAULT_LINK` from `topology_sim`; **`COMM_DEVICE`** from `env_setup` for all All-to-All buffers. Compute stays on the **`device`**.
 
 Constants: `WORLD_SIZE=4`, `TOKENS_PER_EXPERT=32`, `NUM_TILES=4`, `DIM=64`.
 

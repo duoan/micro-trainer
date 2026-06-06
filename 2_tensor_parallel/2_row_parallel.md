@@ -80,7 +80,7 @@ Implement **`row_parallel_forward(x_shard, w_shard, rank, world_size, device)`**
 
 1. **Local matmul**: `y_partial = x_shard @ w_shard` → shape `[BATCH, OUT_DIM]` (full output shape on every rank).
 2. **All-Reduce**: Move `y_partial` to **`COMM_DEVICE`** (`cpu`), then `dist.all_reduce(y_partial, op=dist.ReduceOp.SUM)`.
-3. **Return**: Move the summed result back to the MPS compute `device`.
+3. **Return**: Move the summed result back to the compute `device`.
 
 Unlike column parallel, there is no gather list or concatenation — one tensor in, one reduced tensor out. The `rank` argument is passed for symmetry with other demos but is unused in the forward itself.
 

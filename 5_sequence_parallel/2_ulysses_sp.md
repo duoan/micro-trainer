@@ -72,7 +72,7 @@ Implement two functions in `5_sequence_parallel/2_ulysses_sp.py`:
 1. **`all2all_seq_to_head(x_local, world_size, device)`** -- the reshape "group by destination" is given; you write `dist.all_to_all_single` on `COMM_DEVICE` tensors, then view as `[SEQ, HID/n]`.
 2. **`all2all_head_to_seq(o_head, world_size, device)`** -- the inverse swap, same pattern.
 
-Remember the golden rule: compute on MPS, but the All-to-All runs on **`COMM_DEVICE`** (`cpu`) because gloo collectives reject MPS tensors. `local_attention` is provided.
+Remember the golden rule: compute on `device`, but the All-to-All runs on **`COMM_DEVICE`** (the comm device). `local_attention` is provided.
 
 ## Run it
 
