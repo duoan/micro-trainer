@@ -118,6 +118,16 @@ micro-trainer/
     `-- 2_nd_mesh_parallel.py     #   N-D (6D) mesh (TP/EP/CP/FS/DP/PP), flash per-axis groups
 ```
 
+**Per-module guides** — each folder has its own README:
+[1 · Data Parallel](1_data_parallel/) ·
+[2 · Tensor Parallel](2_tensor_parallel/) ·
+[3 · Pipeline Parallel](3_pipeline_parallel/) ·
+[4 · Expert Parallel](4_expert_parallel/) ·
+[5 · Sequence Parallel](5_sequence_parallel/) ·
+[6 · Context Parallel](6_context_parallel/) ·
+[7 · Multi-head Latent Attention](7_multi_head_latent_attention/) ·
+[8 · Hybrid / N-D Mesh](8_hybrid_parallel/)
+
 ### Learning path by difficulty (do NOT just go 1 → 8 in order!)
 
 The module numbers group demos by *topic*, not by *difficulty*. A 1F1B pipeline state
@@ -125,31 +135,31 @@ machine (module 3) is far harder than a sharding All-Gather (module 1) or an att
 trick (module 7). Follow the **difficulty ladder** below instead -- each level only uses
 ideas from the levels above it, so you always have the tools you need.
 
-| Level | Difficulty | Demo | New skill you'll hand-write |
-| ----- | ---------- | ---- | --------------------------- |
-| **0. Hello, collective** | ★☆☆☆☆ | `1_data_parallel/1_ddp_demo.py` | a single `all_reduce` (gradient average) -- **start here** |
-| | ★☆☆☆☆ | `2_tensor_parallel/1_column_parallel.py` | `all_gather` + concat |
-| | ★☆☆☆☆ | `2_tensor_parallel/2_row_parallel.py` | `all_reduce` partial sums |
-| **1. Sharding** | ★★☆☆☆ | `1_data_parallel/2_zero1_demo.py` | ownership + `broadcast` (shard optimizer state) |
-| | ★★☆☆☆ | `1_data_parallel/3_fsdp_demo.py` | `all_gather` + `reduce_scatter` (shard params & grads) |
-| **2. Process-group meshes** | ★★★☆☆ | `5_sequence_parallel/1_megatron_sp.py` | the `all_gather`/`reduce_scatter` conjugate pair |
-| | ★★★☆☆ | `5_sequence_parallel/2_ulysses_sp.py` | `all_to_all` (swap seq ↔ head) |
-| | ★★★☆☆ | `1_data_parallel/4_hsdp_demo.py` | build subgroups with `new_group` (2D mesh) |
-| | ★★★☆☆ | `2_tensor_parallel/3_summa_2d.py` | row/column `broadcast` on a √N grid |
-| **3. Pipeline state machines** | ★★★☆☆ | `3_pipeline_parallel/1_gpipe.py` | raw `send`/`recv` + F-then-B schedule |
-| | ★★★★☆ | `3_pipeline_parallel/2_one_forward_backward.py` | the 1F1B warmup/steady/cooldown machine |
-| | ★★★★☆ | `3_pipeline_parallel/4_pipedream.py` | async schedule + weight stashing |
-| **4. MoE & attention frontier** | ★★★☆☆ | `7_multi_head_latent_attention/1_deepseek_mla.py` | low-rank KV compression |
-| | ★★★★☆ | `4_expert_parallel/1_naive_moe.py` | token routing + `all_to_all` dispatch/combine |
-| | ★★★★☆ | `4_expert_parallel/2_lightning_moe.py` | tile-level comm/compute overlap |
-| | ★★★★☆ | `6_context_parallel/1_ring_attention.py` | online softmax + K/V ring rotation |
-| **5. Advanced schedules & composition** | ★★★★★ | `3_pipeline_parallel/3_interleaved_1f1b.py` | virtual pipeline (V chunks/rank) |
-| | ★★★★★ | `3_pipeline_parallel/5_chimera.py` | two opposing pipelines |
-| | ★★★★★ | `3_pipeline_parallel/6_deepseek_dualpipe.py` | bidirectional pipeline + overlap |
-| | ★★★★★ | `4_expert_parallel/3_deepseek_moe.py` | fine-grained + shared experts, aux-loss-free balance |
-| | ★★★★★ | `4_expert_parallel/4_deepseek_deepep.py` | overlapped 2-tier `all_to_all` |
-| | ★★★★★ | `8_hybrid_parallel/1_three_d_parallel.py` | **capstone**: DP × TP × PP on one mesh |
-| | ★★★★★ | `8_hybrid_parallel/2_nd_mesh_parallel.py` | **grand capstone**: full 6D mesh `[TP,EP,CP,FS,DP,PP]` + per-axis flash |
+| Level | Difficulty | Demo | Doc | New skill you'll hand-write |
+| ----- | ---------- | ---- | --- | --------------------------- |
+| **0. Hello, collective** | ★☆☆☆☆ | [`1_data_parallel/1_ddp_demo.py`](1_data_parallel/1_ddp_demo.py) | [doc](1_data_parallel/1_ddp_demo.md) | a single `all_reduce` (gradient average) -- **start here** |
+| | ★☆☆☆☆ | [`2_tensor_parallel/1_column_parallel.py`](2_tensor_parallel/1_column_parallel.py) | [doc](2_tensor_parallel/1_column_parallel.md) | `all_gather` + concat |
+| | ★☆☆☆☆ | [`2_tensor_parallel/2_row_parallel.py`](2_tensor_parallel/2_row_parallel.py) | [doc](2_tensor_parallel/2_row_parallel.md) | `all_reduce` partial sums |
+| **1. Sharding** | ★★☆☆☆ | [`1_data_parallel/2_zero1_demo.py`](1_data_parallel/2_zero1_demo.py) | [doc](1_data_parallel/2_zero1_demo.md) | ownership + `broadcast` (shard optimizer state) |
+| | ★★☆☆☆ | [`1_data_parallel/3_fsdp_demo.py`](1_data_parallel/3_fsdp_demo.py) | [doc](1_data_parallel/3_fsdp_demo.md) | `all_gather` + `reduce_scatter` (shard params & grads) |
+| **2. Process-group meshes** | ★★★☆☆ | [`5_sequence_parallel/1_megatron_sp.py`](5_sequence_parallel/1_megatron_sp.py) | [doc](5_sequence_parallel/1_megatron_sp.md) | the `all_gather`/`reduce_scatter` conjugate pair |
+| | ★★★☆☆ | [`5_sequence_parallel/2_ulysses_sp.py`](5_sequence_parallel/2_ulysses_sp.py) | [doc](5_sequence_parallel/2_ulysses_sp.md) | `all_to_all` (swap seq ↔ head) |
+| | ★★★☆☆ | [`1_data_parallel/4_hsdp_demo.py`](1_data_parallel/4_hsdp_demo.py) | [doc](1_data_parallel/4_hsdp_demo.md) | build subgroups with `new_group` (2D mesh) |
+| | ★★★☆☆ | [`2_tensor_parallel/3_summa_2d.py`](2_tensor_parallel/3_summa_2d.py) | [doc](2_tensor_parallel/3_summa_2d.md) | row/column `broadcast` on a √N grid |
+| **3. Pipeline state machines** | ★★★☆☆ | [`3_pipeline_parallel/1_gpipe.py`](3_pipeline_parallel/1_gpipe.py) | [doc](3_pipeline_parallel/1_gpipe.md) | raw `send`/`recv` + F-then-B schedule |
+| | ★★★★☆ | [`3_pipeline_parallel/2_one_forward_backward.py`](3_pipeline_parallel/2_one_forward_backward.py) | [doc](3_pipeline_parallel/2_one_forward_backward.md) | the 1F1B warmup/steady/cooldown machine |
+| | ★★★★☆ | [`3_pipeline_parallel/4_pipedream.py`](3_pipeline_parallel/4_pipedream.py) | [doc](3_pipeline_parallel/4_pipedream.md) | async schedule + weight stashing |
+| **4. MoE & attention frontier** | ★★★☆☆ | [`7_multi_head_latent_attention/1_deepseek_mla.py`](7_multi_head_latent_attention/1_deepseek_mla.py) | [doc](7_multi_head_latent_attention/1_deepseek_mla.md) | low-rank KV compression |
+| | ★★★★☆ | [`4_expert_parallel/1_naive_moe.py`](4_expert_parallel/1_naive_moe.py) | [doc](4_expert_parallel/1_naive_moe.md) | token routing + `all_to_all` dispatch/combine |
+| | ★★★★☆ | [`4_expert_parallel/2_lightning_moe.py`](4_expert_parallel/2_lightning_moe.py) | [doc](4_expert_parallel/2_lightning_moe.md) | tile-level comm/compute overlap |
+| | ★★★★☆ | [`6_context_parallel/1_ring_attention.py`](6_context_parallel/1_ring_attention.py) | [doc](6_context_parallel/1_ring_attention.md) | online softmax + K/V ring rotation |
+| **5. Advanced schedules & composition** | ★★★★★ | [`3_pipeline_parallel/3_interleaved_1f1b.py`](3_pipeline_parallel/3_interleaved_1f1b.py) | [doc](3_pipeline_parallel/3_interleaved_1f1b.md) | virtual pipeline (V chunks/rank) |
+| | ★★★★★ | [`3_pipeline_parallel/5_chimera.py`](3_pipeline_parallel/5_chimera.py) | [doc](3_pipeline_parallel/5_chimera.md) | two opposing pipelines |
+| | ★★★★★ | [`3_pipeline_parallel/6_deepseek_dualpipe.py`](3_pipeline_parallel/6_deepseek_dualpipe.py) | [doc](3_pipeline_parallel/6_deepseek_dualpipe.md) | bidirectional pipeline + overlap |
+| | ★★★★★ | [`4_expert_parallel/3_deepseek_moe.py`](4_expert_parallel/3_deepseek_moe.py) | [doc](4_expert_parallel/3_deepseek_moe.md) | fine-grained + shared experts, aux-loss-free balance |
+| | ★★★★★ | [`4_expert_parallel/4_deepseek_deepep.py`](4_expert_parallel/4_deepseek_deepep.py) | [doc](4_expert_parallel/4_deepseek_deepep.md) | overlapped 2-tier `all_to_all` |
+| | ★★★★★ | [`8_hybrid_parallel/1_three_d_parallel.py`](8_hybrid_parallel/1_three_d_parallel.py) | [doc](8_hybrid_parallel/1_three_d_parallel.md) | **capstone**: DP × TP × PP on one mesh |
+| | ★★★★★ | [`8_hybrid_parallel/2_nd_mesh_parallel.py`](8_hybrid_parallel/2_nd_mesh_parallel.py) | [doc](8_hybrid_parallel/2_nd_mesh_parallel.md) | **grand capstone**: full 6D mesh `[TP,EP,CP,FS,DP,PP]` + per-axis flash |
 
 **Rule of thumb**: finish all of Level 0 first (they each take ~10 lines and teach one
 collective), then climb. Within a module always do the **baseline before the evolution**
@@ -215,11 +225,12 @@ parallelism strategies, each as a "baseline -> evolution" twin you can diff:
 - **Pipeline schedules** (Module 3): GPipe -> 1F1B -> **Interleaved 1F1B** (Megatron virtual
   pipeline) -> **PipeDream** (async + weight stashing) -> **Chimera** (bidirectional) ->
   DeepSeek DualPipe.
-- **Capstones** (Module 8): compose the axes on a single device mesh. `1_three_d_parallel.py`
-  wires DP x TP x PP (TP All-Reduce inside a layer, PP send/recv across stages, DP All-Reduce
-  across replicas); `2_nd_mesh_parallel.py` builds the full **6D** mesh `[TP, EP, CP, FS, DP, PP]`
-  and flashes which process group each axis communicates over -- a terminal take on
-  [Visualizing 6D Mesh Parallelism](https://main-horse.github.io/posts/visualizing-6d/).
+- **Capstones** (Module 8): compose the axes on a single device mesh.
+  [`1_three_d_parallel.py`](8_hybrid_parallel/1_three_d_parallel.py) wires DP x TP x PP (TP
+  All-Reduce inside a layer, PP send/recv across stages, DP All-Reduce across replicas);
+  [`2_nd_mesh_parallel.py`](8_hybrid_parallel/2_nd_mesh_parallel.py) builds the full **6D**
+  mesh `[TP, EP, CP, FS, DP, PP]` and flashes which process group each axis communicates over
+  -- a terminal take on [Visualizing 6D Mesh Parallelism](https://main-horse.github.io/posts/visualizing-6d/).
 
 ---
 
@@ -228,14 +239,14 @@ parallelism strategies, each as a "baseline -> evolution" twin you can diff:
 Four flagship DeepSeek-V2/V3 techniques are included as `deepseek_*` demos, each layered on
 the matching base module:
 
-- **DualPipe** (`3_pipeline_parallel/6_deepseek_dualpipe.py`) -- bidirectional pipeline that runs
+- **DualPipe** ([`3_pipeline_parallel/6_deepseek_dualpipe.py`](3_pipeline_parallel/6_deepseek_dualpipe.py)) -- bidirectional pipeline that runs
   two opposing micro-batch streams to fill each other's bubbles, on top of comm/compute overlap.
-- **DeepSeekMoE** (`4_expert_parallel/3_deepseek_moe.py`) -- many fine-grained routed experts plus
+- **DeepSeekMoE** ([`4_expert_parallel/3_deepseek_moe.py`](4_expert_parallel/3_deepseek_moe.py)) -- many fine-grained routed experts plus
   always-on shared experts, with **auxiliary-loss-free** load balancing (a per-expert bias nudged
   from the global load via All-Reduce, instead of an auxiliary loss).
-- **DeepEP** (`4_expert_parallel/4_deepseek_deepep.py`) -- overlap BOTH the dispatch and combine
+- **DeepEP** ([`4_expert_parallel/4_deepseek_deepep.py`](4_expert_parallel/4_deepseek_deepep.py)) -- overlap BOTH the dispatch and combine
   All-to-All across token chunks, modeling the intra-node (NVLink) vs inter-node (RDMA) tiers.
-- **MLA** (`7_multi_head_latent_attention/1_deepseek_mla.py`) -- Multi-head Latent Attention, which
+- **MLA** ([`7_multi_head_latent_attention/1_deepseek_mla.py`](7_multi_head_latent_attention/1_deepseek_mla.py)) -- Multi-head Latent Attention, which
   caches a small low-rank latent instead of full K/V, shrinking the KV cache dramatically.
 
 ---
