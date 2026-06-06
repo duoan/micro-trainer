@@ -29,7 +29,7 @@ Let `world_size` $= n$, full sequence $S$, local chunk $L = S/n$, head dim $D$, 
       - $p = \exp(\text{scores} - m_{\text{new}})$
       - $\text{denom} \leftarrow \text{denom} \cdot \text{correction} + \text{rowsum}(p)$
       - $\text{acc} \leftarrow \text{acc} \cdot \text{correction} + p \; V_{\text{blk}}$
-   3. If not the last step, **ring exchange** (`ring_exchange`, provided): pack `kv = cat([k_blk, v_blk], dim=-1)`, send to rank $+1$ / recv from rank $-1$ via non-blocking `dist.isend`/`dist.irecv` on **`COMM_DEVICE`**, split received buffer back into $K_{\text{blk}}, V_{\text{blk}}$.
+   3. If not the last step, **ring exchange** (`ring_exchange`, provided): pack `kv = cat([k_blk, v_blk], dim=-1)`, send to rank $+1$ / recv from rank $-1$ via non-blocking `dist.isend`/`dist.irecv` on the same `device`, split received buffer back into $K_{\text{blk}}, V_{\text{blk}}$.
 3. **Normalize**: $\text{out}_r = \text{acc} / \text{denom} \in \mathbb{R}^{L \times D}$.
 
 After the loop, rank $r$ holds the exact softmax attention output for its local query rows against all $S$ keys.
@@ -90,10 +90,10 @@ Implement **`ring_attention(q_local, k_local, v_local, rank, world_size, device)
 3. Loop `world_size` times:
    - `scores = (q_local @ k_blk.transpose(0, 1)) * SCALE`
    - `m, denom, acc = online_softmax_update(m, denom, acc, scores, v_blk)`
-   - If not the last step: pack `kv = torch.cat([k_blk, v_blk], dim=-1)`, call `ring_exchange(kv, rank, world_size, device)` (communicates on **`COMM_DEVICE`**), split into `k_blk, v_blk`.
+   - If not the last step: pack `kv = torch.cat([k_blk, v_blk], dim=-1)`, call `ring_exchange(kv, rank, world_size, device)`, split into `k_blk, v_blk`.
 4. Return `acc / denom`.
 
-Helpers `ring_exchange` and `online_softmax_update` are provided. Remember: compute on `device`, but ring sends/recvs use **`COMM_DEVICE`** (the comm device).
+Helpers `ring_exchange` and `online_softmax_update` are provided. Everything — compute and ring send/recv — runs on the same `device` (gloo on CPU, NCCL on GPU).
 
 ## Run it
 

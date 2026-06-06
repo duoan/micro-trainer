@@ -33,7 +33,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import torch
 import torch.distributed as dist  # noqa: F401  (you will write all_gather / reduce_scatter in the TODOs)
 
-from env_setup import COMM_DEVICE, launch_teaching_cluster, rank0_print, rank_print
+from env_setup import launch_teaching_cluster, rank0_print, rank_print
 
 WORLD_SIZE = 4
 SEQ, DIM, FFN = 16, 8, 32  # SEQ divisible by WORLD_SIZE; FFN divisible by WORLD_SIZE
@@ -54,10 +54,10 @@ def enter_tp_region(x_local: torch.Tensor, world_size: int, device: torch.device
 
     ============================ YOUR BATTLE ZONE 1 ==========================
     Steps:
-        1. x_full = empty tensor of shape [SEQ, DIM] on COMM_DEVICE.
-        2. dist.all_gather_into_tensor(x_full, x_local.to(COMM_DEVICE).contiguous())
+        1. x_full = empty tensor of shape [SEQ, DIM] on x_local.device.
+        2. dist.all_gather_into_tensor(x_full, x_local.contiguous())
            (this concatenates each rank's shard along dim 0, in rank order).
-        3. return x_full.to(device).
+        3. return x_full.
     ==========================================================================
     """
     # TODO(you): all_gather_into_tensor to gather sequence shards into the full activation
@@ -69,11 +69,11 @@ def exit_tp_region(z_partial: torch.Tensor, world_size: int, device: torch.devic
 
     ============================ YOUR BATTLE ZONE 2 ==========================
     Steps:
-        1. z_local = empty tensor of shape [SHARD, DIM] on COMM_DEVICE.
-        2. dist.reduce_scatter_tensor(z_local, z_partial.to(COMM_DEVICE).contiguous(),
+        1. z_local = empty tensor of shape [SHARD, DIM] on z_partial.device.
+        2. dist.reduce_scatter_tensor(z_local, z_partial.contiguous(),
                                       op=dist.ReduceOp.SUM)
            (this sums z_partial across all ranks, then scatters chunk r to rank r).
-        3. return z_local.to(device).
+        3. return z_local.
     ==========================================================================
     """
     # TODO(you): reduce_scatter_tensor to sum partials and scatter along the sequence dim
@@ -103,9 +103,9 @@ def run(rank: int, world_size: int, device: torch.device) -> None:
     z_local = exit_tp_region(z_partial, world_size, device)     # [SHARD, DIM]
 
     # Correctness self-check: gather all shards and compare to the single-machine reference.
-    gathered = torch.empty(SEQ, DIM, device=COMM_DEVICE)
-    dist.all_gather_into_tensor(gathered, z_local.to(COMM_DEVICE).contiguous())
-    ref = (torch.relu(x_full @ a_full) @ b_full).to(COMM_DEVICE)
+    gathered = torch.empty(SEQ, DIM, device=device)
+    dist.all_gather_into_tensor(gathered, z_local.contiguous())
+    ref = (torch.relu(x_full @ a_full) @ b_full).to(device)
     err = (gathered - ref).abs().max().item()
     rank0_print(rank, f"SP output (gathered) shape = {tuple(gathered.shape)} | max error vs single-machine = {err:.2e}")
 

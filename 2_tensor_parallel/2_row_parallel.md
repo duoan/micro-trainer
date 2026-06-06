@@ -49,7 +49,7 @@ sequenceDiagram
     R2->>R2: Y₂ = X₂ @ W₂  (batch × out)
     R3->>R3: Y₃ = X₃ @ W₃  (batch × out)
 
-    Note over R0,R3: All-Reduce(SUM) on COMM_DEVICE (CPU)
+    Note over R0,R3: All-Reduce(SUM)
     R0->>R0: Y = Y₀ + Y₁ + Y₂ + Y₃
     R1->>R1: Y = Y₀ + Y₁ + Y₂ + Y₃
     R2->>R2: Y = Y₀ + Y₁ + Y₂ + Y₃
@@ -79,8 +79,8 @@ The demo computes a single-machine reference $Y_{\text{ref}} = X_{\text{full}} W
 Implement **`row_parallel_forward(x_shard, w_shard, rank, world_size, device)`** in `2_tensor_parallel/2_row_parallel.py`. The skeleton raises `NotImplementedError`; you fill in:
 
 1. **Local matmul**: `y_partial = x_shard @ w_shard` → shape `[BATCH, OUT_DIM]` (full output shape on every rank).
-2. **All-Reduce**: Move `y_partial` to **`COMM_DEVICE`** (`cpu`), then `dist.all_reduce(y_partial, op=dist.ReduceOp.SUM)`.
-3. **Return**: Move the summed result back to the compute `device`.
+2. **All-Reduce**: `dist.all_reduce(y_partial, op=dist.ReduceOp.SUM)` on the same `device`.
+3. **Return** `y_partial`.
 
 Unlike column parallel, there is no gather list or concatenation — one tensor in, one reduced tensor out. The `rank` argument is passed for symmetry with other demos but is unused in the forward itself.
 

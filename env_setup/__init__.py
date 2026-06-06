@@ -10,9 +10,9 @@ It auto-adapts to whatever hardware you run on:
     * Mac / CPU box    -> backend "gloo", everything runs on `cpu`.
 
 (We deliberately do NOT use Apple's MPS: the toy models are tiny so MPS buys
-nothing, and gloo cannot run collectives on MPS tensors -- which would force a
-constant MPS<->CPU shuffle that only obscures the real lessons. Plain CPU keeps
-``device == COMM_DEVICE``, so the comm pattern is identical to the GPU/NCCL case.)
+nothing, and gloo cannot run collectives on MPS tensors. Plain CPU keeps every
+tensor on a device the backend can communicate directly, so each demo just does
+its collectives on the same `device` it computes on -- no device juggling.)
 
 You can force a choice with the env var ``MICRO_TRAINER_BACKEND=gloo|nccl``.
 
@@ -24,15 +24,7 @@ It exposes a few core things:
 
     bind_device(rank)
         Bind a compute device to each rank: `cuda:rank` on a GPU box, else `cpu`.
-
-    COMM_DEVICE
-        A very important constant: where collective tensors must live.
-        * Under NCCL it equals the rank's CUDA device, so the golden-rule move
-          ``tensor.to(COMM_DEVICE)`` is a free no-op (NCCL talks GPU directly).
-        * Under gloo it is `cpu` -- and since compute also runs on `cpu`, the move
-          is again a no-op. So "compute on device, ``.to(COMM_DEVICE)`` before
-          communicating" stays in the code purely for portability: it's the bridge
-          that does real work only if you force gloo on top of CUDA tensors.
+        Every demo computes AND communicates on this `device` directly.
 
 It also ships a set of hand-rolled terminal color / printing helpers so you can
 draw flashy Timeline dashboards.
@@ -58,7 +50,6 @@ __all__ = [
     "launch_teaching_cluster",
     "bind_device",
     "default_backend",
-    "COMM_DEVICE",
     "C",
     "rank_print",
     "rank0_print",
@@ -74,7 +65,7 @@ __all__ = [
 
 
 # --------------------------------------------------------------------------- #
-# Backend + communication-device auto-detection (NCCL on GPU, gloo on Mac/CPU)
+# Backend auto-detection (NCCL on GPU, gloo on Mac/CPU)
 # --------------------------------------------------------------------------- #
 def default_backend() -> str:
     """Pick the communication backend for this machine.
@@ -89,14 +80,6 @@ def default_backend() -> str:
     if torch.cuda.is_available() and dist.is_nccl_available():
         return "nccl"
     return "gloo"
-
-
-# Where collective tensors must live. Under NCCL that is the current CUDA device
-# (so `tensor.to(COMM_DEVICE)` is a free no-op and collectives run on the GPU);
-# under gloo it is cpu -- and since we compute on cpu too, that move is also a
-# no-op. `torch.device("cuda")` (no index) resolves to whatever
-# `torch.cuda.set_device` picked for this rank, so one constant works everywhere.
-COMM_DEVICE = torch.device("cuda") if default_backend() == "nccl" else torch.device("cpu")
 
 
 # --------------------------------------------------------------------------- #

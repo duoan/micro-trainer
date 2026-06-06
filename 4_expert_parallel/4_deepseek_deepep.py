@@ -40,7 +40,6 @@ from topology_sim import (  # noqa: F401
 )
 
 from env_setup import (
-    COMM_DEVICE,  # noqa: F401  (move comm tensors onto it)
     Timeline,
     bar,
     launch_teaching_cluster,
@@ -80,12 +79,12 @@ def split_chunks(tokens: torch.Tensor, num_chunks: int) -> list[torch.Tensor]:
 
 def reference_forward(expert: Expert, tokens: torch.Tensor, device: torch.device) -> torch.Tensor:
     """Synchronous dispatch -> expert -> combine, used only to check your overlapped version."""
-    disp = torch.empty_like(tokens, device=COMM_DEVICE)
+    disp = torch.empty_like(tokens)
     slow_all_to_all_single(disp, tokens, INTER_NODE)
-    out = expert(disp.to(device))
-    comb = torch.empty_like(out, device=COMM_DEVICE)
+    out = expert(disp)
+    comb = torch.empty_like(out)
     slow_all_to_all_single(comb, out, INTER_NODE)
-    return comb.to(device)
+    return comb
 
 
 def deepep_moe_forward(
@@ -103,15 +102,15 @@ def deepep_moe_forward(
     Keep small lists/dicts for in-flight work handles and buffers.
 
     Prologue: fire async dispatch for chunk 0:
-        disp0 = empty_like(chunks[0]) on COMM_DEVICE
+        disp0 = torch.empty_like(chunks[0])
         d_work0 = slow_all_to_all_single_async(disp0, chunks[0], INTER_NODE)
 
     Steady (for t in range(NUM_CHUNKS)):
         - if t+1 exists: fire async dispatch for chunk t+1 (so it flies during compute)
         - d_work[t].wait()                                  # timeline span kind="comm"
-        - out_t = expert(disp[t].to(device))                # timeline span kind="compute"
+        - out_t = expert(disp[t])                           # timeline span kind="compute"
         - fire async COMBINE for out_t:
-              comb_t = empty_like(out_t) on COMM_DEVICE
+              comb_t = torch.empty_like(out_t)
               c_work[t] = slow_all_to_all_single_async(comb_t, out_t, INTER_NODE)
         - if t-1 >= 0: c_work[t-1].wait(); stash comb[t-1] as a finished result
     Epilogue: wait the last combine, collect all comb[t], torch.cat along dim 0, return.
@@ -136,7 +135,7 @@ def run(rank: int, world_size: int, device: torch.device) -> None:
 
     # Correctness self-check: overlapped result must equal the synchronous reference.
     ref = reference_forward(expert, tokens, device)
-    err = (out.to(COMM_DEVICE) - ref.to(COMM_DEVICE)).abs().max().item()
+    err = (out.to(device) - ref.to(device)).abs().max().item()
     deepep_ms = timeline.makespan() * 1000
     rank0_print(rank, f"DeepEP makespan = {deepep_ms:.1f} ms | max error vs synchronous = {err:.2e}")
 

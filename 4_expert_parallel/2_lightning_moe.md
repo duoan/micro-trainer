@@ -23,12 +23,12 @@ Same MoE semantics as naive (dispatch → expert → combine), but the token bat
 Let tiles be $T_0, \ldots, T_{K-1}$ with $K$ = `NUM_TILES`.
 
 1. **Prologue** — Fire async dispatch for tile 0:
-   - `buf_0 = empty_like(T_0)` on COMM_DEVICE
+   - `buf_0 = empty_like(T_0)` on the same `device`
    - `work_0 = slow_all_to_all_single_async(buf_0, T_0)`
 2. **Steady state** — For each tile index $t \in [0, K)$:
    - If $t + 1 < K$, immediately fire async dispatch for tile $t+1$ (comm in flight).
    - `work_t.wait()` inside a comm timeline span — tops up remaining simulated latency.
-   - `out_t = expert(buf_t.to(device))` inside a compute span — **this compute covers tile $t+1$'s in-flight latency**.
+   - `out_t = expert(buf_t)` inside a compute span — **this compute covers tile $t+1$'s in-flight latency**.
    - Stash `out_t`.
 3. **Epilogue** — `torch.cat` all `out_t` along the token dim; optionally pipeline combine the same way (get dispatch overlap working first).
 
@@ -91,15 +91,15 @@ Use **`split_tiles(tokens, NUM_TILES)`** to chunk the batch. Pattern:
 
 ```python
 tiles = split_tiles(tokens, NUM_TILES)
-# Prologue: buf0 on COMM_DEVICE, work0 = slow_all_to_all_single_async(buf0, tiles[0])
+# Prologue: buf0 on device, work0 = slow_all_to_all_single_async(buf0, tiles[0])
 # Steady loop over t:
 #   - fire async dispatch for tiles[t+1] if it exists
 #   - timeline.span(..., kind="comm"): work_t.wait()
-#   - timeline.span(..., kind="compute"): out_t = expert(buf_t.to(device))
+#   - timeline.span(..., kind="compute"): out_t = expert(buf_t)
 # Epilogue: return torch.cat(out_list, dim=0)  # extend with combine pipeline if desired
 ```
 
-Key imports: `slow_all_to_all_single_async`, `DEFAULT_LINK` from `topology_sim`; **`COMM_DEVICE`** from `env_setup` for all All-to-All buffers. Compute stays on the **`device`**.
+Key imports: `slow_all_to_all_single_async`, `DEFAULT_LINK` from `topology_sim`. Dispatch, compute, and combine all run on the same **`device`**.
 
 Constants: `WORLD_SIZE=4`, `TOKENS_PER_EXPERT=32`, `NUM_TILES=4`, `DIM=64`.
 

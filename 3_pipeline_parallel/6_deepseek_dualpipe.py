@@ -31,7 +31,6 @@ import torch.distributed as dist  # noqa: E402
 import torch.nn as nn
 
 from env_setup import (  # noqa: E402
-    COMM_DEVICE,
     C,
     Timeline,
     launch_teaching_cluster,
@@ -61,11 +60,11 @@ class Stage(nn.Module):
 
 
 def send_tensor(t: torch.Tensor, dst: int) -> None:
-    dist.send(t.detach().to(COMM_DEVICE).contiguous(), dst=dst)
+    dist.send(t.detach().contiguous(), dst=dst)
 
 
 def recv_tensor(shape: tuple[int, ...], src: int, device: torch.device) -> torch.Tensor:
-    buf = torch.empty(shape, device=COMM_DEVICE)
+    buf = torch.empty(shape, device=device)
     dist.recv(buf, src=src)
     return buf.to(device)
 

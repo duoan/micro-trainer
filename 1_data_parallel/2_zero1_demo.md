@@ -75,11 +75,11 @@ After fixing that, it stops at the second TODO in `step_and_all_gather`. When bo
 
 Two functions in `1_data_parallel/2_zero1_demo.py`:
 
-**1. `reduce_average_gradients(model, world_size)`** — warm-up, same as DDP. For each `p.grad`: move to **`COMM_DEVICE`**, `dist.all_reduce(..., op=dist.ReduceOp.SUM)`, divide by `world_size`, write back to `p.grad` on `p.device`.
+**1. `reduce_average_gradients(model, world_size)`** — warm-up, same as DDP. For each `p.grad`: `dist.all_reduce(..., op=dist.ReduceOp.SUM)` on the same `device`, divide by `world_size`.
 
 **2. `step_and_all_gather(model, owner, rank, world_size, lr)`** — the ZeRO-1 core. Iterate with `enumerate(model.parameters())`:
 - **A.** If `owner[i] == rank`: apply SGD locally, `p.data -= lr * p.grad`.
-- **B.** For every parameter (regardless of ownership): copy `p.data` to a CPU tensor on **`COMM_DEVICE`**, then `dist.broadcast(param_cpu, src=owner[i])`, then copy the result back to `p.data` on the compute device.
+- **B.** For every parameter (regardless of ownership): `dist.broadcast(p.data, src=owner[i])` on the same `device`.
 
 Using per-parameter broadcast from the owner is a simplification of All-Gather; concatenating slices via `dist.all_gather` is also valid.
 

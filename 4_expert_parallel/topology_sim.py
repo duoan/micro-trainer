@@ -16,7 +16,7 @@ This file is the "foundation tool" for you, ready to use as-is:
     - slow_all_to_all_single(...): a delay-injected All-to-All (synchronous, for naive).
     - slow_all_to_all_single_async(...): an async version returning (work, output) (for lightning's overlap).
 
-The golden rule still holds: gloo only accepts CPU tensors, so all comm tensors live on COMM_DEVICE.
+All-to-All runs directly on the tensors' compute device (CPU under gloo, GPU under NCCL).
 """
 
 from __future__ import annotations
@@ -30,8 +30,6 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 import torch
 import torch.distributed as dist  # noqa: E402
-
-from env_setup import COMM_DEVICE
 
 
 @dataclass(frozen=True)
@@ -71,7 +69,7 @@ def slow_all_to_all_single(
     communication dutifully waits out the full latency while the compute units idle.
     """
     _inject_delay(input, link)
-    dist.all_to_all_single(output.to(COMM_DEVICE), input.to(COMM_DEVICE))
+    dist.all_to_all_single(output, input)
 
 
 def slow_all_to_all_single_async(
@@ -92,7 +90,7 @@ def slow_all_to_all_single_async(
     the returned handle, to be settled by the caller at wait() time. So the SHAPE of the
     overlap is real, while the AMOUNT of latency is simulated.
     """
-    work = dist.all_to_all_single(output.to(COMM_DEVICE), input.to(COMM_DEVICE), async_op=True)
+    work = dist.all_to_all_single(output, input, async_op=True)
     nbytes = input.element_size() * input.nelement()
     return _DelayedWork(work, link.transfer_time(nbytes))
 

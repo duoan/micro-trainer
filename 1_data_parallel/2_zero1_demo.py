@@ -32,8 +32,7 @@ import torch
 import torch.distributed as dist  # noqa: F401  (you will write dist.* in the TODOs)
 import torch.nn as nn
 
-# COMM_DEVICE is provided: move every cross-rank comm tensor onto it (gloo = cpu only)
-from env_setup import COMM_DEVICE, launch_teaching_cluster, rank0_print, rank_print  # noqa: F401
+from env_setup import launch_teaching_cluster, rank0_print, rank_print
 
 WORLD_SIZE = 4
 STEPS = 5
@@ -78,7 +77,7 @@ def reduce_average_gradients(model: nn.Module, world_size: int) -> None:
     """Global gradient averaging -- identical to ddp_demo; nail this first as a warm-up.
 
     ============================ YOUR BATTLE ZONE 1 ==========================
-    For each p.grad: move to COMM_DEVICE -> all_reduce(SUM) -> /world_size -> write back.
+    For each p.grad: all_reduce(SUM) -> divide by world_size -> done.
     ==========================================================================
     """
     for p in model.parameters():
@@ -104,12 +103,12 @@ def step_and_all_gather(
            (Real ZeRO-1 holds Adam m/v state here; this demo uses SGD to get the
            skeleton running first.)
         B. Regardless of ownership, after the update everyone must see the latest
-           value: dist.broadcast(param_cpu, src=owner[i]) sends the owner's updated
+           value: dist.broadcast(p.data, src=owner[i]) sends the owner's updated
            parameter to all ranks.
            (broadcast is an equivalent simplification of all_gather; you can also
            literally use all_gather + concatenation to stay closer to the paper.)
 
-    Remember: all communication tensors must be on COMM_DEVICE! Use owner[i] with index i.
+    Comm runs directly on each param's device. Use owner[i] with index i.
     ==========================================================================
     """
     # TODO(you): use owner[i] to decide local update, then broadcast/all_gather latest params to all ranks

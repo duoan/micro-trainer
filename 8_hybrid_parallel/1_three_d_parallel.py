@@ -34,7 +34,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import torch
 import torch.distributed as dist  # noqa: F401  (you will write dist.* in the TODOs)
 
-from env_setup import COMM_DEVICE, launch_teaching_cluster, rank0_print, rank_print
+from env_setup import launch_teaching_cluster, rank0_print, rank_print
 
 PP, DP, TP = 2, 2, 2  # pipeline x data x tensor; product must equal WORLD_SIZE
 WORLD_SIZE = PP * DP * TP  # = 8
@@ -107,24 +107,24 @@ def hybrid_forward(
     if pp_i == 0:   # ---- pipeline stage 0: row-parallel W1 ----
         x_col   = x_full[:, tp_i*per_in:(tp_i+1)*per_in].to(device)          # [B, DIN/TP]
         w1_shard = w1[tp_i*per_in:(tp_i+1)*per_in, :].to(device)            # [DIN/TP, DH]
-        partial = (x_col @ w1_shard).to(COMM_DEVICE)                         # [B, DH] partial sum
+        partial = x_col @ w1_shard                                          # [B, DH] partial sum
         dist.all_reduce(partial, op=dist.ReduceOp.SUM, group=tp_group)       # TP All-Reduce
         h = torch.relu(partial)                                             # full [B, DH]
         # send h to my pipeline partner (same dp,tp) on stage 1, via the PP group
         dst = rank + (DP * TP)                                               # pp_idx 0 -> 1
         dist.send(h.contiguous(), dst=dst, group=pp_group)
-        return h.to(device)
+        return h
 
     else:           # ---- pipeline stage 1: row-parallel W2 ----
         per_h = DH // TP
-        h = torch.empty(B, DH, device=COMM_DEVICE)
+        h = torch.empty(B, DH, device=device)
         src = rank - (DP * TP)
         dist.recv(h, src=src, group=pp_group)                               # recv activations
         h_col   = h[:, tp_i*per_h:(tp_i+1)*per_h].to(device)               # [B, DH/TP]
         w2_shard = w2[tp_i*per_h:(tp_i+1)*per_h, :].to(device)             # [DH/TP, DOUT]
-        partial = (h_col @ w2_shard).to(COMM_DEVICE)                        # [B, DOUT] partial sum
+        partial = h_col @ w2_shard                                          # [B, DOUT] partial sum
         dist.all_reduce(partial, op=dist.ReduceOp.SUM, group=tp_group)      # TP All-Reduce
-        return partial.to(device)                                          # full y [B, DOUT]
+        return partial                                                     # full y [B, DOUT]
     ==========================================================================
     """
     # TODO(you): TP all_reduce within each stage + PP send/recv between stage 0 and stage 1
@@ -135,7 +135,7 @@ def dp_average(t: torch.Tensor, dp_group) -> torch.Tensor:
     """Average a tensor across the DATA-parallel group only (the DP axis of the mesh).
 
     ============================ YOUR BATTLE ZONE 2 ==========================
-    buf = t.to(COMM_DEVICE)
+    buf = t.clone()
     dist.all_reduce(buf, op=dist.ReduceOp.SUM, group=dp_group)
     return buf / DP        # only DP ranks participate, so divide by DP (not world_size)
     ==========================================================================
@@ -157,13 +157,13 @@ def run(rank: int, world_size: int, device: torch.device) -> None:
     out = hybrid_forward(rank, x_full, w1, w2, tp_group, pp_group, device)
 
     # forward self-check: stage-1 ranks must reproduce the single-machine network output
-    ref = (torch.relu(x_full @ w1) @ w2).to(COMM_DEVICE)
+    ref = (torch.relu(x_full @ w1) @ w2).to(device)
     if pp_i == 1:
-        err = (out.to(COMM_DEVICE) - ref).abs().max().item()
+        err = (out.to(device) - ref).abs().max().item()
         rank_print(rank, f"stage1 output {tuple(out.shape)} | max error vs single-machine={err:.2e}")
     else:
-        h_ref = torch.relu(x_full @ w1).to(COMM_DEVICE)
-        err = (out.to(COMM_DEVICE) - h_ref).abs().max().item()
+        h_ref = torch.relu(x_full @ w1).to(device)
+        err = (out.to(device) - h_ref).abs().max().item()
         rank_print(rank, f"stage0 hidden {tuple(out.shape)} | max error vs single-machine={err:.2e}")
 
     # DP-axis check: a per-replica tensor that differs only by dp_idx must average correctly

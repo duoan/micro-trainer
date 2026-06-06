@@ -36,7 +36,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import torch
 import torch.distributed as dist  # noqa: F401  (you will write all_to_all_single in the TODOs)
 
-from env_setup import COMM_DEVICE, launch_teaching_cluster, rank0_print, rank_print
+from env_setup import launch_teaching_cluster, rank0_print, rank_print
 
 WORLD_SIZE = 4
 SEQ, HEADS, HEAD_DIM = 16, 4, 8  # HEADS == WORLD_SIZE so each rank gets exactly 1 head after the swap
@@ -74,11 +74,11 @@ def all2all_seq_to_head(x_local: torch.Tensor, world_size: int, device: torch.de
         1. Group local rows by destination head-group:
               inp = x_local.reshape(SHARD, world_size, HID_SHARD).transpose(0, 1).reshape(world_size * SHARD, HID_SHARD)
            (chunk j of `inp` along dim 0 is the data destined for rank j.)
-        2. out = empty([world_size * SHARD, HID_SHARD]) on COMM_DEVICE
-           dist.all_to_all_single(out, inp.to(COMM_DEVICE))
+        2. out = empty([world_size * SHARD, HID_SHARD]) on inp.device
+           dist.all_to_all_single(out, inp)
            (now chunk k of `out` came from rank k = that rank's sequence chunk for OUR head group;
             stacking the n chunks along dim 0 yields the full sequence in order.)
-        3. return out.reshape(SEQ, HID_SHARD).to(device)
+        3. return out.reshape(SEQ, HID_SHARD)
     ==========================================================================
     """
     # TODO(you): reshape "by destination", all_to_all_single, then view as [SEQ, HID/n]
@@ -92,10 +92,10 @@ def all2all_head_to_seq(o_head: torch.Tensor, world_size: int, device: torch.dev
     Steps:
         1. Group by destination rank (each rank keeps its own sequence chunk):
               inp = o_head.reshape(world_size, SHARD, HID_SHARD).reshape(world_size * SHARD, HID_SHARD)
-        2. out = empty([world_size * SHARD, HID_SHARD]) on COMM_DEVICE
-           dist.all_to_all_single(out, inp.to(COMM_DEVICE))
+        2. out = empty([world_size * SHARD, HID_SHARD]) on inp.device
+           dist.all_to_all_single(out, inp)
         3. Reassemble all head groups for our local sequence chunk:
-              return out.reshape(world_size, SHARD, HID_SHARD).transpose(0, 1).reshape(SHARD, HID).to(device)
+              return out.reshape(world_size, SHARD, HID_SHARD).transpose(0, 1).reshape(SHARD, HID)
     ==========================================================================
     """
     # TODO(you): reshape "by destination", all_to_all_single, then view as [S/n, HID]
@@ -131,9 +131,9 @@ def run(rank: int, world_size: int, device: torch.device) -> None:
     o_local = all2all_head_to_seq(o_head, world_size, device)  # [S/n, HID]
 
     # Correctness self-check: gather all sequence shards, compare to single-machine MHA.
-    gathered = torch.empty(SEQ, HID, device=COMM_DEVICE)
-    dist.all_gather_into_tensor(gathered, o_local.to(COMM_DEVICE).contiguous())
-    ref = multihead_reference(q_full, k_full, v_full).to(COMM_DEVICE)
+    gathered = torch.empty(SEQ, HID, device=device)
+    dist.all_gather_into_tensor(gathered, o_local.contiguous())
+    ref = multihead_reference(q_full, k_full, v_full).to(device)
     err = (gathered - ref).abs().max().item()
     rank0_print(rank, f"Ulysses-SP output shape = {tuple(gathered.shape)} | max error vs single-machine = {err:.2e}")
 

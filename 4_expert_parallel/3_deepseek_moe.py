@@ -37,7 +37,7 @@ import torch
 import torch.distributed as dist  # noqa: F401  (you will write dist.all_reduce in a TODO)
 import torch.nn as nn
 
-from env_setup import COMM_DEVICE, launch_teaching_cluster, rank0_print, rank_print
+from env_setup import launch_teaching_cluster, rank0_print, rank_print
 
 WORLD_SIZE = 4
 TOKENS = 32
@@ -99,8 +99,8 @@ def update_expert_bias(
 
     ============================ YOUR BATTLE ZONE 2 ==========================
     Steps:
-        1. Move local_counts to COMM_DEVICE, dist.all_reduce(SUM) to get the global per-expert
-           load across all ranks, then move back.
+        1. dist.all_reduce(local_counts, op=dist.ReduceOp.SUM) to get the global
+           per-expert load across all ranks.
         2. Nudge the bias: bias = bias + BIAS_SPEED * sign(target_load - global_counts)
            (underloaded -> bias up -> more likely selected next step; overloaded -> bias down).
         3. return the updated bias.
@@ -124,7 +124,7 @@ def deepseek_moe_forward(
     y = torch.zeros_like(x)
     for s in shared:                                         # always-on shared experts
         y = y + s(x)
-    counts = torch.zeros(N_ROUTED, device=COMM_DEVICE)
+    counts = torch.zeros(N_ROUTED, device=x.device)
     for slot in range(TOP_K):
         e_idx = idx[:, slot]                                 # [T]
         g = gate[:, slot : slot + 1]                         # [T, 1]

@@ -22,7 +22,7 @@ Let **p** = `world_size` (number of stages), **m** = `NUM_MICRO` (micro-batches)
 1. **Shard inputs**: Rank 0 holds `micro_inputs[0..m−1]`; other ranks receive activations from their upstream neighbor.
 2. **Phase A — all forwards** (for each micro-batch index `k` from 0 to m−1):
    - Rank 0: `x = micro_inputs[k]`.
-   - Rank r > 0: `x = recv_tensor(..., src=r−1)` on `device` after the helper copies from `COMM_DEVICE`.
+   - Rank r > 0: `x = recv_tensor(..., src=r−1)` on `device` via the helper.
    - Compute `out = stage(x)` inside `timeline.span(rank, f"F{k}", kind="compute")`.
    - If not the last stage: `send_tensor(out, dst=r+1)`; else retain `out` for backward.
    - Stash each micro-batch's `(input, output)` pair — backward needs the saved graph.
@@ -45,7 +45,7 @@ sequenceDiagram
 
     Note over S0,S3: Phase A — all forwards (micro-batch k)
     S0->>S0: F_k on micro_inputs[k]
-    S0->>S1: send activation (COMM_DEVICE)
+    S0->>S1: send activation
     S1->>S1: F_k
     S1->>S2: send activation
     S2->>S2: F_k
@@ -62,7 +62,7 @@ sequenceDiagram
     S0->>S0: B_k
 ```
 
-Tensors compute on the **`device`**; `send_tensor` / `recv_tensor` route data through **`COMM_DEVICE`** (the device collectives run on), so the same code works under gloo and NCCL.
+Everything — compute and point-to-point send/recv — runs on the same **`device`** (gloo communicates CPU tensors, NCCL communicates GPU tensors directly).
 
 ## What you'll see
 
@@ -100,7 +100,7 @@ Implement **`gpipe_schedule(rank, world_size, stage, micro_inputs, device, timel
 - Other stages: recv grad from rank+1, `out.backward(grad)`, send input grad to rank−1.
 - Wrap each step with `timeline.span(rank, f"B{m}")`.
 
-Use the provided **`send_tensor`** / **`recv_tensor`** helpers — they handle the `COMM_DEVICE` hop for you.
+Use the provided **`send_tensor`** / **`recv_tensor`** helpers — they send/recv directly on the compute `device`.
 
 ## Run it
 

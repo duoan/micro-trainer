@@ -33,7 +33,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import torch
 import torch.distributed as dist
 
-from env_setup import COMM_DEVICE, launch_teaching_cluster, rank0_print, rank_print
+from env_setup import launch_teaching_cluster, rank0_print, rank_print
 
 WORLD_SIZE = 4
 SEQ, DIM = 16, 8  # SEQ divisible by WORLD_SIZE
@@ -58,12 +58,12 @@ def ring_exchange(kv: torch.Tensor, rank: int, world_size: int, device: torch.de
     """
     nxt = (rank + 1) % world_size
     prv = (rank - 1) % world_size
-    send_buf = kv.detach().to(COMM_DEVICE).contiguous()
+    send_buf = kv.detach().contiguous()
     recv_buf = torch.empty_like(send_buf)
     reqs = [dist.isend(send_buf, dst=nxt), dist.irecv(recv_buf, src=prv)]
     for r in reqs:
         r.wait()
-    return recv_buf.to(device)
+    return recv_buf
 
 
 def online_softmax_update(
@@ -141,9 +141,9 @@ def run(rank: int, world_size: int, device: torch.device) -> None:
     out_local = ring_attention(q_local, k_local, v_local, rank, world_size, device)
 
     # Correctness self-check: gather all local outputs, compare to single-machine attention.
-    gathered = torch.empty(SEQ, DIM, device=COMM_DEVICE)
-    dist.all_gather_into_tensor(gathered, out_local.to(COMM_DEVICE).contiguous())
-    ref = (torch.softmax((q_full @ k_full.transpose(0, 1)) * SCALE, dim=-1) @ v_full).to(COMM_DEVICE)
+    gathered = torch.empty(SEQ, DIM, device=device)
+    dist.all_gather_into_tensor(gathered, out_local.contiguous())
+    ref = (torch.softmax((q_full @ k_full.transpose(0, 1)) * SCALE, dim=-1) @ v_full).to(device)
     err = (gathered - ref).abs().max().item()
     rank0_print(rank, f"Ring-Attention output shape = {tuple(gathered.shape)} | max error vs single-machine = {err:.2e}")
 

@@ -33,7 +33,7 @@ Constants in the skeleton: `N_ROUTED=8`, `N_SHARED=1`, `TOP_K=2`, `BIAS_SPEED=0.
 3. **DeepSeekMoE forward** (provided as `deepseek_moe_forward`):
    $$y_t = \sum_{s=1}^{N_{\mathrm{shared}}} \mathrm{shared}_s(x_t) + \sum_{e \in \mathcal{K}_t} g_{t,e}\, \mathrm{expert}_e(x_t)$$
    Tally local per-expert token counts $\mathrm{local\_counts}_e$ while applying routed experts.
-4. **Global load** — Move counts to **COMM_DEVICE**, then:
+4. **Global load** — All-Reduce local counts on the same `device`:
    $$\mathrm{load}_e = \sum_{r=0}^{\mathrm{world\_size}-1} \mathrm{local\_counts}_e^{(r)} \quad \text{via } \texttt{dist.all\_reduce(SUM)}$$
 5. **Bias update** (auxiliary-loss-free):
    $$b_e \leftarrow b_e + \gamma \cdot \mathrm{sign}\!\left(\mathrm{target\_load} - \mathrm{load}_e\right)$$
@@ -58,11 +58,11 @@ sequenceDiagram
     R2->>R2: deepseek_moe_forward → local_counts_2
     R3->>R3: deepseek_moe_forward → local_counts_3
 
-    Note over R0,R3: Bias update — All-Reduce(SUM) on COMM_DEVICE (CPU)
-    R0->>R0: local_counts_0.to(COMM_DEVICE)
-    R1->>R1: local_counts_1.to(COMM_DEVICE)
-    R2->>R2: local_counts_2.to(COMM_DEVICE)
-    R3->>R3: local_counts_3.to(COMM_DEVICE)
+    Note over R0,R3: Bias update — All-Reduce(SUM)
+    R0->>R0: local_counts_0
+    R1->>R1: local_counts_1
+    R2->>R2: local_counts_2
+    R3->>R3: local_counts_3
     R0->>R1: dist.all_reduce(SUM) — global load_e on every rank
     R1->>R2: dist.all_reduce(SUM) — global load_e on every rank
     R2->>R3: dist.all_reduce(SUM) — global load_e on every rank
@@ -75,7 +75,7 @@ sequenceDiagram
     R3->>R3: update_expert_bias
 ```
 
-Golden rule: compute on the **`device`**; collectives run on tensors moved to **COMM_DEVICE**.
+Everything — compute and collectives — runs on the same **`device`** (gloo communicates CPU tensors, NCCL communicates GPU tensors directly).
 
 ## What you'll see
 
@@ -111,11 +111,11 @@ Two functions in `4_expert_parallel/3_deepseek_moe.py` raise `NotImplementedErro
 
 **TODO 2 — `update_expert_bias(bias, local_counts, world_size, target_load)`**
 
-1. Move `local_counts` to **COMM_DEVICE**; `dist.all_reduce(..., op=dist.ReduceOp.SUM)` for global load.
+1. `dist.all_reduce(local_counts, op=dist.ReduceOp.SUM)` for global load on the same `device`.
 2. `bias = bias + BIAS_SPEED * torch.sign(target_load - global_counts)`.
 3. Return updated `bias`.
 
-Imports already present: `torch.distributed as dist`, `COMM_DEVICE` from `env_setup`. Experts and router are replicated on every rank for clarity — no token All-to-All here.
+Imports already present: `torch.distributed as dist`. Experts and router are replicated on every rank for clarity — no token All-to-All here.
 
 ## Run it
 

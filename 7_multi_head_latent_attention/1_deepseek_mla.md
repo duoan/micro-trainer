@@ -68,7 +68,7 @@ sequenceDiagram
     R2->>R2: q₂,k₂,v₂ from c_KV & x; local Attn₂
     R3->>R3: q₃,k₃,v₃ from c_KV & x; local Attn₃
 
-    Note over R0,R3: All-Gather on COMM_DEVICE (CPU)
+    Note over R0,R3: All-Gather
     R0->>R0: gather [Attn₀, Attn₁, Attn₂, Attn₃]
     R1->>R1: gather [Attn₀, Attn₁, Attn₂, Attn₃]
     R2->>R2: gather [Attn₀, Attn₁, Attn₂, Attn₃]
@@ -109,9 +109,9 @@ Implement **`compress_and_project(x, w, rank, device)`** in `7_multi_head_latent
 4. **Project Q for this rank's head slice**: `q = (x @ w["W_Q"][:, sl]).view(SEQ, HEADS_PER_RANK, HEAD_DIM)`.
 5. **Return** `(q, k, v)`.
 
-No communication in this function — it is local compute on the `device`. Helpers **`local_attention`** (per-head softmax attention) and **`gather_heads`** (All-Gather on **`COMM_DEVICE`**, then concat) are already provided.
+No communication in this function — it is local compute on the `device`. Helpers **`local_attention`** (per-head softmax attention) and **`gather_heads`** (All-Gather on the same `device`, then concat) are already provided.
 
-Remember the golden rule: compute on `device`, move to **`COMM_DEVICE`** before collectives, move back after (a no-op on CPU/NCCL, kept for portability).
+Everything — compute and collectives — runs on the same `device` (gloo communicates CPU tensors, NCCL communicates GPU tensors directly).
 
 ## Run it
 

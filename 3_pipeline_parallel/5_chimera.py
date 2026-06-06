@@ -34,7 +34,6 @@ import torch.distributed as dist  # noqa: E402
 import torch.nn as nn
 
 from env_setup import (  # noqa: E402
-    COMM_DEVICE,
     C,
     Timeline,
     launch_teaching_cluster,
@@ -61,11 +60,11 @@ class Stage(nn.Module):
 
 
 def send_tensor(t: torch.Tensor, dst: int) -> None:
-    dist.send(t.detach().to(COMM_DEVICE).contiguous(), dst=dst)
+    dist.send(t.detach().contiguous(), dst=dst)
 
 
 def recv_tensor(shape: tuple[int, ...], src: int, device: torch.device) -> torch.Tensor:
-    buf = torch.empty(shape, device=COMM_DEVICE)
+    buf = torch.empty(shape, device=device)
     dist.recv(buf, src=src)
     return buf.to(device)
 
@@ -86,9 +85,9 @@ def sync_replica_grads(down_stage: Stage, up_stage: Stage, world_size: int) -> N
     for p_down, p_up in zip(down_stage.parameters(), up_stage.parameters(), strict=True):
         if p_down.grad is None or p_up.grad is None:
             continue
-        g = (p_down.grad + p_up.grad).to(COMM_DEVICE)
+        g = p_down.grad + p_up.grad
         dist.all_reduce(g, op=dist.ReduceOp.SUM)
-        g = (g / (2 * world_size)).to(p_down.device)
+        g = g / (2 * world_size)
         p_down.grad, p_up.grad = g.clone(), g.clone()
 
 

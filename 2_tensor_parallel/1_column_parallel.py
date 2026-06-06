@@ -30,7 +30,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import torch
 import torch.distributed as dist  # noqa: F401  (you will write dist.all_gather in the TODO)
 
-from env_setup import COMM_DEVICE, launch_teaching_cluster, rank0_print, rank_print
+from env_setup import launch_teaching_cluster, rank0_print, rank_print
 
 WORLD_SIZE = 4
 BATCH, IN_DIM, OUT_DIM = 8, 16, 32  # OUT_DIM must be divisible by WORLD_SIZE
@@ -61,9 +61,9 @@ def column_parallel_forward(
     Steps:
         1. Local matmul: y_local = x @ w_shard      # shape [BATCH, OUT_DIM/world_size]
         2. Prepare a list `gathered` of length world_size, each element an empty
-           tensor with the same shape as y_local (on COMM_DEVICE).
-        3. dist.all_gather(gathered, y_local.to(COMM_DEVICE))
-        4. torch.cat(gathered, dim=-1) for the full Y, move back to device and return.
+           tensor with the same shape as y_local (on the same device).
+        3. dist.all_gather(gathered, y_local)
+        4. torch.cat(gathered, dim=-1) for the full Y; return it.
     ==========================================================================
     """
     # TODO(you): local matmul + all_gather concatenation along dim=-1
@@ -85,8 +85,8 @@ def run(rank: int, world_size: int, device: torch.device) -> None:
     y = column_parallel_forward(x, w_shard, rank, world_size, device)
 
     # Correctness self-check: compare against the single-machine full-W result
-    ref = x.to(COMM_DEVICE) @ full_w.to(COMM_DEVICE)
-    err = (y.to(COMM_DEVICE) - ref).abs().max().item()
+    ref = x @ full_w.to(device)
+    err = (y.to(device) - ref).abs().max().item()
     rank0_print(rank, f"Column-parallel output shape = {tuple(y.shape)} | max error vs single-machine = {err:.2e}")
 
 

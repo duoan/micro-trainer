@@ -35,7 +35,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import torch
 import torch.distributed as dist  # noqa: F401  (you will write dist.broadcast in the TODO)
 
-from env_setup import COMM_DEVICE, launch_teaching_cluster, rank0_print, rank_print
+from env_setup import launch_teaching_cluster, rank0_print, rank_print
 
 WORLD_SIZE = 4  # must be a perfect square (2x2 grid here)
 M, K, N = 8, 8, 8  # M, K, N must all be divisible by q = sqrt(world_size)
@@ -89,21 +89,21 @@ def summa_forward(
 
     ============================ YOUR BATTLE ZONE ============================
     mb, kb = x_blk.shape ; _, nb = w_blk.shape
-    acc = zeros [mb, nb] on COMM_DEVICE
+    acc = zeros [mb, nb] on device
     for k in range(q):
         # 1) X[row][k] lives on the rank at (row, k); its GLOBAL rank is row*q + k.
         #    Broadcast it to everyone in this row group.
-        x_buf = x_blk.to(COMM_DEVICE).clone() if col == k else torch.empty(mb, kb, device=COMM_DEVICE)
+        x_buf = x_blk.clone() if col == k else torch.empty(mb, kb, device=device)
         dist.broadcast(x_buf, src=row * q + k, group=row_group)
 
         # 2) W[k][col] lives on the rank at (k, col); its GLOBAL rank is k*q + col.
         #    Broadcast it to everyone in this column group.
-        w_buf = w_blk.to(COMM_DEVICE).clone() if row == k else torch.empty(kb, nb, device=COMM_DEVICE)
+        w_buf = w_blk.clone() if row == k else torch.empty(kb, nb, device=device)
         dist.broadcast(w_buf, src=k * q + col, group=col_group)
 
         # 3) accumulate the partial product
         acc += x_buf @ w_buf
-    return acc.to(device)   # this rank now holds output block Y[row][col]
+    return acc   # this rank now holds output block Y[row][col]
     ==========================================================================
     """
     # TODO(you): the q-round broadcast-multiply-accumulate SUMMA loop
@@ -126,8 +126,8 @@ def run(rank: int, world_size: int, device: torch.device) -> None:
     y_blk = summa_forward(x_blk, w_blk, row, col, q, row_group, col_group, device)
 
     # self-check: my output block must equal the matching block of single-machine X @ W
-    ref = block(full_x @ full_w, row, col, bi_m, bi_n).to(COMM_DEVICE)
-    err = (y_blk.to(COMM_DEVICE) - ref).abs().max().item()
+    ref = block(full_x @ full_w, row, col, bi_m, bi_n).to(device)
+    err = (y_blk.to(device) - ref).abs().max().item()
     rank_print(rank, f"output block ({row},{col}) shape={tuple(y_blk.shape)} | max error vs single-machine={err:.2e}")
     rank0_print(rank, "2D SUMMA done: each rank held only a 1/N block; comm stayed within row/col groups.")
 

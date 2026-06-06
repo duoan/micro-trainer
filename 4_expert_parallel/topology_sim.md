@@ -8,7 +8,7 @@ On a Mac, inter-process communication over unified memory is absurdly fast — s
 
 The naive and lightning MoE demos need a controllable delay to expose the gap between **serial waiting** and **Tile overlap**. This module is the foundation tool: it injects modeled latency around real `dist.all_to_all_single` calls so you can see the night-and-day difference on a laptop.
 
-The golden rule still applies: compute on the **`device`**; all communication buffers live on **`COMM_DEVICE`** (the device collectives run on).
+Everything — compute and collectives — runs on the same **`device`** (gloo communicates CPU tensors, NCCL communicates GPU tensors directly).
 
 ## What it provides
 
@@ -38,7 +38,7 @@ A module-level default: `LinkProfile(latency_s=0.02)` — **20 ms** per transfer
 **Synchronous** All-to-All with simulated latency:
 
 1. Sleep for `link.transfer_time(nbytes)` on the input tensor.
-2. Call `dist.all_to_all_single(output.to(COMM_DEVICE), input.to(COMM_DEVICE))`.
+2. Call `dist.all_to_all_single(output, input)`.
 
 Semantically equivalent to a blocking All-to-All; **naive_moe** uses this so every communication dutifully waits out the full latency while compute units idle.
 
@@ -46,7 +46,7 @@ Semantically equivalent to a blocking All-to-All; **naive_moe** uses this so eve
 
 **Asynchronous** All-to-All; returns a `_DelayedWork` handle immediately:
 
-1. Fire `dist.all_to_all_single(..., async_op=True)` on `COMM_DEVICE` tensors right away.
+1. Fire `dist.all_to_all_single(..., async_op=True)` right away.
 2. Book the modeled latency (`link.transfer_time(nbytes)`) onto the handle.
 3. Caller calls `.wait()` when the output buffer is actually needed.
 
@@ -58,23 +58,22 @@ Import from `topology_sim` inside the MoE demos (the demos add the parent direct
 
 ```python
 from topology_sim import DEFAULT_LINK, slow_all_to_all_single, slow_all_to_all_single_async
-from env_setup import COMM_DEVICE
 ```
 
 ### Synchronous (naive MoE)
 
 ```python
-dispatched = torch.empty_like(tokens, device=COMM_DEVICE)
+dispatched = torch.empty_like(tokens)
 with timeline.span(rank, "dispatch", kind="comm"):
     slow_all_to_all_single(dispatched, tokens, DEFAULT_LINK)
 # dispatched now holds tokens destined for this rank's expert
-out = expert(dispatched.to(device))  # compute on the device
+out = expert(dispatched)
 ```
 
 ### Asynchronous (lightning MoE)
 
 ```python
-buf0 = torch.empty_like(tile0, device=COMM_DEVICE)
+buf0 = torch.empty_like(tile0)
 work0 = slow_all_to_all_single_async(buf0, tile0, DEFAULT_LINK)
 
 # ... fire next tile's async dispatch, then do expert compute on the device ...

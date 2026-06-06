@@ -37,22 +37,18 @@ code changes.
 > **Why CPU and not Apple's MPS on a Mac?** The toy models are tiny, so MPS buys nothing,
 > and gloo cannot run collectives on MPS tensors -- that would force a constant MPS<->CPU
 > shuffle that only obscures the lessons (and is a classic source of bugs). Plain CPU keeps
-> `device == COMM_DEVICE`, so the comm pattern is identical to the GPU/NCCL case.
+> every tensor on a device the backend can talk to directly, so the comm pattern is identical
+> to the GPU/NCCL case.
 
-### One golden rule across the whole project: compute on `device`, communicate on `COMM_DEVICE`
+### One rule across the whole project: compute *and* communicate on the same `device`
 
-`env_setup` exposes a `COMM_DEVICE` constant -- the device collectives must run on:
-
-- **Under NCCL (GPU)**: `COMM_DEVICE` *is* the rank's CUDA device, so `.to(COMM_DEVICE)` is a
-  **free no-op** -- NCCL talks GPU-to-GPU directly.
-- **Under gloo (Mac/CPU)**: `COMM_DEVICE = cpu`, and since compute also runs on `cpu`, the
-  move is again a **no-op**.
-
-So `.to(COMM_DEVICE)` stays in every demo for **portability and clarity**: it marks exactly
-where communication happens, and it's the bridge that does real work only if you force gloo
-on top of CUDA tensors. **The exact same code** (`compute on device` -> `.to(COMM_DEVICE)` ->
-`communicate` -> `.to(device)`) is correct on both backends. It also forces you to see that "compute" and
-"communication" are two separate things -- the entire crux of distributed systems optimization.
+Each rank gets one `device` from `bind_device(rank)` -- `cuda:i` on a GPU box, `cpu`
+otherwise. Because we never use MPS, that `device` is always one the backend can communicate
+on directly (NCCL talks GPU-to-GPU, gloo talks CPU-to-CPU). So every demo simply runs its
+collectives on the very same tensors it computes with -- no device juggling, no `.to(...)`
+hops before each `all_reduce`. **The exact same code** runs on a Mac laptop and on an 8-GPU
+server. It also keeps the focus on the real lesson: "compute" and "communication" are two
+separate things -- the entire crux of distributed systems optimization.
 
 ---
 
@@ -87,7 +83,7 @@ feel the pain, then write the evolved version that kills that pain.
 ```text
 micro-trainer/
 |-- env_setup/                  # foundation layer (already done, no edits needed)
-|   `-- __init__.py             #   launch_teaching_cluster / bind_device / COMM_DEVICE / Timeline dashboard
+|   `-- __init__.py             #   launch_teaching_cluster / bind_device / Timeline dashboard
 |
 |-- 1_data_parallel/            # Module 1: data parallelism & memory sharding
 |   |-- 1_ddp_demo.py             #   baseline: naive DDP (hand-written gradient All-Reduce averaging)
@@ -191,7 +187,7 @@ Every demo's bottom looks like this; you just write `run`:
 from env_setup import launch_teaching_cluster
 
 def run(rank, world_size, device):
-    ...  # your distributed core logic (compute on device; .to(COMM_DEVICE) before communicating)
+    ...  # your distributed core logic (compute and communicate on `device`)
 
 if __name__ == "__main__":
     launch_teaching_cluster(world_size=4, func=run)

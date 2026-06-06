@@ -36,7 +36,6 @@ from topology_sim import (  # noqa: F401  (delay-injected synchronous All-to-All
 )
 
 from env_setup import (
-    COMM_DEVICE,  # noqa: F401  (remember to move comm tensors onto it)
     Timeline,
     launch_teaching_cluster,
     rank0_print,
@@ -82,20 +81,20 @@ def naive_moe_forward(
 
     ============================ YOUR BATTLE ZONE ============================
     1) Dispatch (synchronous All-to-All):
-         dispatched = empty_like(tokens) on COMM_DEVICE
+         dispatched = torch.empty_like(tokens)
          wrap with timeline.span(rank, "dispatch", kind="comm"):
              slow_all_to_all_single(dispatched, tokens, DEFAULT_LINK)
        Now `dispatched` holds "tokens from the whole world destined for this rank's expert".
 
     2) Expert (compute):
          wrap with timeline.span(rank, "expert", kind="compute"):
-             out = expert(dispatched.to(device))
+             out = expert(dispatched)
 
     3) Combine (synchronous All-to-All back):
-         combined = empty_like(out) on COMM_DEVICE
+         combined = torch.empty_like(out)
          wrap with timeline.span(rank, "combine", kind="comm"):
              slow_all_to_all_single(combined, out, DEFAULT_LINK)
-       return combined.to(device).
+       return combined.
 
     Feel it: the three steps are strictly back-to-back with zero overlap; compute units
     idle entirely during the communication latency.

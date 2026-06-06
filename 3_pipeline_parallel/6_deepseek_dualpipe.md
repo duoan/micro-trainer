@@ -10,7 +10,7 @@
 - Trade-off: two copies of params/activations in flight — in DeepSeek-V3 this is paired with **MoE** so expert all-to-all of one chunk hides behind attention/MLP compute of another.
 - Warmup counts: stream A = `world_size - 1 - rank`, stream B = `rank`; three phases (warmup / steady / cooldown) mirror 1F1B but for **both** directions, interleaved.
 - This demo is a **scheduling skeleton** — schedule **shape** matters more than numerics.
-- Demos launch via `launch_teaching_cluster(world_size, func)`; compute on the **`device`**, send/recv route through **`COMM_DEVICE`** (the comm device).
+- Demos launch via `launch_teaching_cluster(world_size, func)`; compute and send/recv all run on the same **`device`** (gloo on CPU, NCCL on GPU).
 
 ## The problem
 
@@ -40,7 +40,7 @@ sequenceDiagram
 
     Note over S0,S3: Stream A — forward rank r to r+1
     S0->>S0: A:F0 compute (device)
-    S0->>S1: send activation (COMM_DEVICE)
+    S0->>S1: send activation
     S1->>S1: A:F0 compute
     S1->>S2: send activation
     S2->>S2: A:F0 compute
@@ -49,7 +49,7 @@ sequenceDiagram
 
     Note over S0,S3: Stream B — forward rank r to r-1 (opposite)
     S3->>S3: B:F0 compute (device)
-    S3->>S2: send activation (COMM_DEVICE)
+    S3->>S2: send activation
     S2->>S2: B:F0 compute
     S2->>S1: send activation
     S1->>S1: B:F0 compute
@@ -61,7 +61,7 @@ sequenceDiagram
     S2->>S2: B:F1 while A:B0 backward
 ```
 
-Tensors compute on the **`device`**; `send_tensor` / `recv_tensor` move data through **`COMM_DEVICE`** (the comm device), so the same code works under gloo and NCCL.
+Everything — compute and point-to-point send/recv — runs on the same **`device`** (gloo communicates CPU tensors, NCCL communicates GPU tensors directly).
 
 ## What you'll see
 
@@ -99,7 +99,7 @@ Three phases for **each** stream, interleaved:
 2. **Steady**: each iteration advances both streams — one forward and one backward per direction, interleaved so comm on one stream overlaps compute on the other.
 3. **Cooldown**: drain remaining backwards (`A:B{m}` / `B:B{m}`).
 
-Wrap each compute chunk with `timeline.span(rank, tag)` and call `log_state(rank, tag)`. Use provided **`send_tensor`** / **`recv_tensor`** — they handle the `COMM_DEVICE` hop for you. Correctness of the schedule **shape** (both streams complete, smaller timeline bubble than gpipe/1f1b) matters more than perfect numerics.
+Wrap each compute chunk with `timeline.span(rank, tag)` and call `log_state(rank, tag)`. Use provided **`send_tensor`** / **`recv_tensor`** — they send/recv directly on the compute `device`. Correctness of the schedule **shape** (both streams complete, smaller timeline bubble than gpipe/1f1b) matters more than perfect numerics.
 
 ## Run it
 

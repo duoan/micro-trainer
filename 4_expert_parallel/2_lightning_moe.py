@@ -37,7 +37,6 @@ from topology_sim import (  # noqa: F401  (async All-to-All, for overlap)
 )
 
 from env_setup import (
-    COMM_DEVICE,  # noqa: F401  (remember to move comm tensors onto it)
     Timeline,
     bar,
     launch_teaching_cluster,
@@ -92,7 +91,7 @@ def lightning_moe_forward(
       tiles = split_tiles(tokens, NUM_TILES)
 
       1) Prologue: fire an async dispatch for tile 0:
-             buf0 = empty_like(tile0) on COMM_DEVICE
+             buf0 = torch.empty_like(tile0)
              work0 = slow_all_to_all_single_async(buf0, tile0)
 
       2) Steady: for t in range(NUM_TILES):

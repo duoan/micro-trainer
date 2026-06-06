@@ -23,14 +23,14 @@ Same MoE semantics as naive (dispatch → expert → combine), but the local tok
 Let chunks be $C_0, \ldots, C_{K-1}$ with $K$ = `NUM_CHUNKS`.
 
 1. **Prologue** — Fire async dispatch for chunk 0:
-   - `disp0 = empty_like(C_0)` on **COMM_DEVICE**
+   - `disp0 = empty_like(C_0)` on the same `device`
    - `d_work0 = slow_all_to_all_single_async(disp0, C_0, INTER_NODE)`
 2. **Steady state** — For each chunk index $t \in [0, K)$:
    - If $t + 1 < K$, fire async dispatch for chunk $t+1$ (inter-node, slow — overlaps with upcoming compute).
    - `d_work[t].wait()` inside a comm timeline span — tops up only remaining simulated latency.
-   - `out_t = expert(disp[t].to(device))` inside a compute span on the **`device`**.
+   - `out_t = expert(disp[t])` inside a compute span on the **`device`**.
    - Fire async combine for `out_t`:
-     - `comb_t = empty_like(out_t)` on **COMM_DEVICE**
+     - `comb_t = empty_like(out_t)` on the same `device`
      - `c_work[t] = slow_all_to_all_single_async(comb_t, out_t, INTER_NODE)`
    - If $t - 1 \geq 0$, `c_work[t-1].wait()` and stash `comb[t-1]` as a finished result.
    At any moment during steady state, dispatch($t+1$) and combine($t-1$) are both in flight while expert($t$) computes.
@@ -60,7 +60,7 @@ sequenceDiagram
     Rank->>Rank: torch.cat(comb_0, ..., comb_{K-1})
 ```
 
-Each rank runs this pipeline independently. All-to-All is a collective, but the **overlap schedule** is per-rank software pipelining. Comm tensors live on **COMM_DEVICE** (CPU); gloo requires CPU tensors for collectives.
+Each rank runs this pipeline independently. All-to-All is a collective, but the **overlap schedule** is per-rank software pipelining. Dispatch, compute, and combine all run on the same `device`.
 
 ## What you'll see
 
@@ -103,17 +103,17 @@ Pattern:
 ```python
 chunks = split_chunks(tokens, NUM_CHUNKS)
 # Keep lists/dicts for in-flight work handles and buffers (disp, comb, d_work, c_work).
-# Prologue: disp0 on COMM_DEVICE, d_work0 = slow_all_to_all_single_async(disp0, chunks[0], INTER_NODE)
+# Prologue: disp0 on device, d_work0 = slow_all_to_all_single_async(disp0, chunks[0], INTER_NODE)
 # Steady loop over t:
 #   - fire async dispatch for chunks[t+1] if it exists
 #   - timeline.span(..., kind="comm"): d_work[t].wait()
-#   - timeline.span(..., kind="compute"): out_t = expert(disp[t].to(device))
+#   - timeline.span(..., kind="compute"): out_t = expert(disp[t])
 #   - fire async combine: c_work[t] = slow_all_to_all_single_async(comb_t, out_t, INTER_NODE)
 #   - if t-1 >= 0: timeline.span(..., kind="comm"): c_work[t-1].wait(); stash comb[t-1]
-# Epilogue: wait last combine, torch.cat all comb chunks, return .to(device)
+# Epilogue: wait last combine, torch.cat all comb chunks, return
 ```
 
-Key imports: `LinkProfile`, `slow_all_to_all_single_async` from `topology_sim`; **`COMM_DEVICE`**, **`Timeline`**, **`bar`** from `env_setup`. Compute on the **`device`**; all All-to-All buffers on **COMM_DEVICE**.
+Key imports: `LinkProfile`, `slow_all_to_all_single_async` from `topology_sim`; **`Timeline`**, **`bar`** from `env_setup`. Dispatch, compute, and combine all run on the same **`device`**.
 
 Constants: `WORLD_SIZE=4`, `TOKENS_PER_EXPERT=32`, `NUM_CHUNKS=4`, `DIM=64`, `INTRA_NODE` (2 ms), `INTER_NODE` (20 ms).
 

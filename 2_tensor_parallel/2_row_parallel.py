@@ -31,7 +31,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import torch
 import torch.distributed as dist  # noqa: F401  (you will write dist.all_reduce in the TODO)
 
-from env_setup import COMM_DEVICE, launch_teaching_cluster, rank0_print, rank_print
+from env_setup import launch_teaching_cluster, rank0_print, rank_print
 
 WORLD_SIZE = 4
 BATCH, IN_DIM, OUT_DIM = 8, 16, 32  # IN_DIM must be divisible by WORLD_SIZE
@@ -66,8 +66,8 @@ def row_parallel_forward(
     ============================ YOUR BATTLE ZONE ============================
     Steps:
         1. Local matmul: y_partial = x_shard @ w_shard   # shape [BATCH, OUT_DIM] (full shape on every rank)
-        2. Move to COMM_DEVICE, dist.all_reduce(y_partial, op=dist.ReduceOp.SUM)
-        3. Move back to device and return -- now every rank holds the same full Y.
+        2. dist.all_reduce(y_partial, op=dist.ReduceOp.SUM)
+        3. Return -- now every rank holds the same full Y.
     ==========================================================================
     """
     # TODO(you): local matmul + all_reduce(SUM)
@@ -88,8 +88,8 @@ def run(rank: int, world_size: int, device: torch.device) -> None:
 
     y = row_parallel_forward(x_shard, w_shard, rank, world_size, device)
 
-    ref = x_full.to(COMM_DEVICE) @ full_w.to(COMM_DEVICE)
-    err = (y.to(COMM_DEVICE) - ref).abs().max().item()
+    ref = x_full.to(device) @ full_w.to(device)
+    err = (y.to(device) - ref).abs().max().item()
     rank0_print(rank, f"Row-parallel output shape = {tuple(y.shape)} | max error vs single-machine = {err:.2e}")
 
 

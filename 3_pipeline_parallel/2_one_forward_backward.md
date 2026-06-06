@@ -60,7 +60,7 @@ sequenceDiagram
     S1->>S0: B grad
 ```
 
-As in GPipe, compute runs on the **`device`**; `send_tensor` / `recv_tensor` shuttle through **`COMM_DEVICE`** (the comm device), keeping the code identical under gloo and NCCL.
+As in GPipe, compute and point-to-point send/recv all run on the same **`device`** (gloo on CPU, NCCL on GPU).
 
 ## What you'll see
 
@@ -95,7 +95,7 @@ Three phases:
 2. **Steady**: loop `NUM_MICRO - num_warmup` times — `forward_one` then `backward_one`.
 3. **Cooldown**: backward remaining queue entries.
 
-Comm direction matches GPipe: forward **r → r+1**, backward **r ← r+1**, via `send_tensor` / `recv_tensor` on `COMM_DEVICE`.
+Comm direction matches GPipe: forward **r → r+1**, backward **r ← r+1**, via `send_tensor` / `recv_tensor` on the compute `device`.
 
 ## Run it
 

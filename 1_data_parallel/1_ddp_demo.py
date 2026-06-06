@@ -26,7 +26,7 @@ import torch
 import torch.distributed as dist  # noqa: E402  (communication written out in the open)
 import torch.nn as nn
 
-from env_setup import COMM_DEVICE, launch_teaching_cluster, rank0_print, rank_print
+from env_setup import launch_teaching_cluster, rank0_print, rank_print
 
 WORLD_SIZE = 4
 STEPS = 5
@@ -64,9 +64,7 @@ def broadcast_initial_params(model: nn.Module) -> None:
     """Make every rank start from identical parameters (broadcast from rank 0).
     This is a precondition for DDP correctness."""
     for p in model.parameters():
-        cpu = p.detach().to(COMM_DEVICE)
-        dist.broadcast(cpu, src=0)
-        p.data.copy_(cpu.to(p.device))
+        dist.broadcast(p.data, src=0)
 
 
 def synchronize_gradients(model: nn.Module, world_size: int) -> None:
@@ -74,10 +72,8 @@ def synchronize_gradients(model: nn.Module, world_size: int) -> None:
 
     ============================ YOUR BATTLE ZONE ============================
     What to do: iterate over model.parameters(), and for each p.grad:
-        1. Move it to COMM_DEVICE (the device collectives run on).
-        2. dist.all_reduce(grad, op=dist.ReduceOp.SUM)
-        3. Divide by world_size to get the averaged gradient.
-        4. Write it back into p.grad (moved back to p's device).
+        1. dist.all_reduce(p.grad, op=dist.ReduceOp.SUM) -- sum grads across ranks.
+        2. Divide by world_size to get the averaged gradient.
 
     Hint: skip parameters with no gradient (p.grad is None).
     ==========================================================================
@@ -86,7 +82,7 @@ def synchronize_gradients(model: nn.Module, world_size: int) -> None:
         if p.grad is None:
             continue
         # TODO(you): hand-write dist.all_reduce here to average gradients.
-        # Delete the raise below and implement the 4 steps above.
+        # Delete the raise below and implement the 2 steps above.
         raise NotImplementedError("TODO: implement cross-rank gradient All-Reduce averaging in synchronize_gradients")
 
 

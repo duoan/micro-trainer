@@ -33,7 +33,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import torch
 import torch.distributed as dist
 
-from env_setup import COMM_DEVICE, launch_teaching_cluster, rank0_print, rank_print
+from env_setup import launch_teaching_cluster, rank0_print, rank_print
 
 WORLD_SIZE = 4
 SEQ, D_MODEL = 12, 32
@@ -95,10 +95,10 @@ def local_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> torch.
 def gather_heads(o_local: torch.Tensor, world_size: int, device: torch.device) -> torch.Tensor:
     """All-Gather the per-rank head outputs and concatenate into the full [SEQ, HEADS*HEAD_DIM]."""
     width = HEADS_PER_RANK * HEAD_DIM
-    buf = torch.empty(world_size * SEQ * width, device=COMM_DEVICE)
-    dist.all_gather_into_tensor(buf, o_local.reshape(-1).to(COMM_DEVICE).contiguous())
+    buf = torch.empty(world_size * SEQ * width, device=device)
+    dist.all_gather_into_tensor(buf, o_local.reshape(-1).contiguous())
     parts = buf.reshape(world_size, SEQ, width)
-    return torch.cat([parts[r] for r in range(world_size)], dim=-1).to(device)
+    return torch.cat([parts[r] for r in range(world_size)], dim=-1)
 
 
 def run(rank: int, world_size: int, device: torch.device) -> None:
@@ -115,16 +115,16 @@ def run(rank: int, world_size: int, device: torch.device) -> None:
     out = gather_heads(o_local, world_size, device)  # [SEQ, HEADS*HEAD_DIM]
 
     # Correctness self-check: full single-machine MLA reference.
-    cw = {k: t.to(COMM_DEVICE) for k, t in build_full_weights().items()}
-    c_kv = x.to(COMM_DEVICE) @ cw["W_DKV"]
+    cw = {k: t.to(device) for k, t in build_full_weights().items()}
+    c_kv = x @ cw["W_DKV"]
     K = (c_kv @ cw["W_UK"]).view(SEQ, HEADS, HEAD_DIM)
     V = (c_kv @ cw["W_UV"]).view(SEQ, HEADS, HEAD_DIM)
-    Q = (x.to(COMM_DEVICE) @ cw["W_Q"]).view(SEQ, HEADS, HEAD_DIM)
-    ref = torch.empty(SEQ, HEADS * HEAD_DIM, device=COMM_DEVICE)
+    Q = (x @ cw["W_Q"]).view(SEQ, HEADS, HEAD_DIM)
+    ref = torch.empty(SEQ, HEADS * HEAD_DIM, device=device)
     for h in range(HEADS):
         s = (Q[:, h] @ K[:, h].transpose(0, 1)) * SCALE
         ref[:, h * HEAD_DIM : (h + 1) * HEAD_DIM] = torch.softmax(s, dim=-1) @ V[:, h]
-    err = (out.to(COMM_DEVICE) - ref).abs().max().item()
+    err = (out.to(device) - ref).abs().max().item()
     rank0_print(rank, f"MLA output shape = {tuple(out.shape)} | max error vs single-machine = {err:.2e}")
 
 

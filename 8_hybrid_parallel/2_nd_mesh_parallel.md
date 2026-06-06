@@ -65,7 +65,7 @@ One function in `8_hybrid_parallel/2_nd_mesh_parallel.py` — `ping_axis(mesh, a
 
 ```python
 group = mesh.groups[axis]
-probe = torch.full((1,), float(mesh.coords[axis]), device=COMM_DEVICE)
+probe = torch.full((1,), float(mesh.coords[axis]), device=device)
 dist.all_reduce(probe, op=dist.ReduceOp.SUM, group=group)
 return probe.item()
 ```

@@ -69,10 +69,10 @@ The demo builds full Q, K, V, computes a single-machine multi-head attention ref
 
 Implement two functions in `5_sequence_parallel/2_ulysses_sp.py`:
 
-1. **`all2all_seq_to_head(x_local, world_size, device)`** -- the reshape "group by destination" is given; you write `dist.all_to_all_single` on `COMM_DEVICE` tensors, then view as `[SEQ, HID/n]`.
+1. **`all2all_seq_to_head(x_local, world_size, device)`** -- the reshape "group by destination" is given; you write `dist.all_to_all_single`, then view as `[SEQ, HID/n]`.
 2. **`all2all_head_to_seq(o_head, world_size, device)`** -- the inverse swap, same pattern.
 
-Remember the golden rule: compute on `device`, but the All-to-All runs on **`COMM_DEVICE`** (the comm device). `local_attention` is provided.
+Everything — compute and All-to-All — runs on the same `device` (gloo communicates CPU tensors, NCCL communicates GPU tensors directly). `local_attention` is provided.
 
 ## Run it
 

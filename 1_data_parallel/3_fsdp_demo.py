@@ -35,7 +35,7 @@ import torch
 import torch.distributed as dist  # noqa: F401  (you will write dist.* in the TODOs)
 import torch.nn as nn
 
-from env_setup import COMM_DEVICE, launch_teaching_cluster, rank0_print, rank_print
+from env_setup import launch_teaching_cluster, rank0_print, rank_print
 
 WORLD_SIZE = 4
 STEPS = 5
@@ -97,11 +97,11 @@ def all_gather_full_params(local_shard: torch.Tensor, world_size: int) -> torch.
     """All-Gather every rank's shard back into the full (padded) flat parameter vector.
 
     ============================ YOUR BATTLE ZONE 1 ==========================
-    local_shard is this rank's slice (length shard_size), already on any device.
+    local_shard is this rank's slice (length shard_size), on the compute device.
     Steps:
-        1. Build a list `gathered` of world_size empty tensors shaped like local_shard,
-           on COMM_DEVICE.
-        2. dist.all_gather(gathered, local_shard.to(COMM_DEVICE))
+        1. Build a list `gathered` of world_size empty tensors shaped like local_shard
+           (on the same device as local_shard).
+        2. dist.all_gather(gathered, local_shard)
         3. torch.cat(gathered) -> the full padded flat vector; return it.
     This is the "materialize parameters just before compute" step of FSDP.
     ==========================================================================
@@ -118,9 +118,9 @@ def reduce_scatter_grad(full_grad_flat: torch.Tensor, world_size: int) -> torch.
     rank r should end up with SUM over ranks of the r-th chunk, divided by world_size.
     Steps:
         1. shard_size = full_grad_flat.numel() // world_size
-        2. input_list = list(full_grad_flat.to(COMM_DEVICE).chunk(world_size))
+        2. input_list = list(full_grad_flat.chunk(world_size))
            (a list of world_size contiguous chunks)
-        3. out = empty tensor of shape [shard_size] on COMM_DEVICE
+        3. out = empty tensor of shape [shard_size] on full_grad_flat.device
         4. dist.reduce_scatter(out, [c.contiguous() for c in input_list], op=dist.ReduceOp.SUM)
         5. return out / world_size   (the averaged gradient for THIS rank's shard)
     ==========================================================================
@@ -134,7 +134,7 @@ def run(rank: int, world_size: int, device: torch.device) -> None:
     model = TinyMLP().to(device)
 
     total = sum(p.numel() for p in model.parameters())
-    flat = pad_to_multiple(flatten_params(model).to(COMM_DEVICE), world_size)
+    flat = pad_to_multiple(flatten_params(model), world_size)
     shard_size = flat.numel() // world_size
     # At rest each rank keeps ONLY its shard (this is the memory win).
     local_shard = flat.chunk(world_size)[rank].clone()
@@ -154,7 +154,7 @@ def run(rank: int, world_size: int, device: torch.device) -> None:
         loss.backward()
 
         # 3) reduce-scatter grads -> my shard's averaged gradient
-        full_grad = pad_to_multiple(flatten_grads(model).to(COMM_DEVICE), world_size)
+        full_grad = pad_to_multiple(flatten_grads(model), world_size)
         my_grad = reduce_scatter_grad(full_grad, world_size)
 
         # self-check: the shard from reduce_scatter must equal the matching slice of the

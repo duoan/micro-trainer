@@ -46,7 +46,6 @@ import torch
 import torch.distributed as dist  # noqa: F401  (you will write dist.all_reduce in the TODO)
 
 from env_setup import (
-    COMM_DEVICE,  # noqa: F401  (you will use COMM_DEVICE in the ping_axis TODO)
     C,
     banner,
     build_mesh,
@@ -76,7 +75,7 @@ MESH = {"TP": 2, "EP": 1, "CP": 2, "FS": 1, "DP": 2, "PP": 1}
 WORLD_SIZE = math.prod(MESH.values())
 
 
-def ping_axis(mesh, axis: str) -> float:
+def ping_axis(mesh, axis: str, device: torch.device) -> float:
     """All-Reduce a coordinate probe over `axis`'s group to prove the group is wired right.
 
     Each group along an axis holds exactly one rank per coordinate value (0..size-1), so
@@ -84,7 +83,7 @@ def ping_axis(mesh, axis: str) -> float:
 
     ============================ YOUR BATTLE ZONE ============================
     group = mesh.groups[axis]
-    probe = torch.full((1,), float(mesh.coords[axis]), device=COMM_DEVICE)
+    probe = torch.full((1,), float(mesh.coords[axis]), device=device)
     dist.all_reduce(probe, op=dist.ReduceOp.SUM, group=group)
     return probe.item()
     ==========================================================================
@@ -111,7 +110,7 @@ def run(rank: int, world_size: int, device: torch.device) -> None:
         if MESH[axis] == 1:
             rank0_print(rank, f"{C.GREY}{axis}: degenerate (size 1) -> no communication{C.RESET}")
             continue
-        got = ping_axis(mesh, axis)
+        got = ping_axis(mesh, axis, device)
         expected = MESH[axis] * (MESH[axis] - 1) / 2.0
         ok = abs(got - expected) < 1e-6
         rank0_print(rank, render_mesh(mesh, highlight_axis=axis))

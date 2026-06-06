@@ -36,7 +36,7 @@ import torch
 import torch.distributed as dist  # noqa: F401  (you will write dist.* in the TODO)
 import torch.nn as nn
 
-from env_setup import COMM_DEVICE, launch_teaching_cluster, rank0_print, rank_print
+from env_setup import launch_teaching_cluster, rank0_print, rank_print
 
 WORLD_SIZE = 4
 SHARD = 2  # ranks per shard group ("intra-node" FSDP width)
@@ -109,8 +109,8 @@ def hsdp_sync_grad(full_grad: torch.Tensor, shard_group, replica_group, shard_id
     full_grad is this rank's full (padded to a multiple of SHARD) gradient vector.
 
     Step 1 -- intra-node FSDP Reduce-Scatter over `shard_group` (size SHARD):
-        chunks = list(full_grad.to(COMM_DEVICE).chunk(SHARD))   # one chunk per shard rank
-        my = empty tensor shaped like chunks[0], on COMM_DEVICE
+        chunks = list(full_grad.chunk(SHARD))   # one chunk per shard rank
+        my = empty tensor shaped like chunks[0], on full_grad.device
         dist.reduce_scatter(my, [c.contiguous() for c in chunks],
                             op=dist.ReduceOp.SUM, group=shard_group)
         # now `my` = sum over the shard group of chunk[shard_idx]
@@ -142,7 +142,7 @@ def run(rank: int, world_size: int, device: torch.device) -> None:
         loss = loss_fn(model(x), y)
         loss.backward()
 
-        full_grad = pad_to_multiple(flatten_grads(model).to(COMM_DEVICE), SHARD)
+        full_grad = pad_to_multiple(flatten_grads(model), SHARD)
         my_grad = hsdp_sync_grad(full_grad, shard_group, replica_group, shard_idx)
 
         # self-check: equals the matching shard of the GLOBAL average gradient

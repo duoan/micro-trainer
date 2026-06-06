@@ -47,7 +47,7 @@ sequenceDiagram
     Note over R2: X₂ rows 8–11
     Note over R3: X₃ rows 12–15
 
-    Note over R0,R3: [g] All-Gather along sequence (COMM_DEVICE)
+    Note over R0,R3: [g] All-Gather along sequence
     R0->>R0: X full (S × D)
     R1->>R1: X full (S × D)
     R2->>R2: X full (S × D)
@@ -59,7 +59,7 @@ sequenceDiagram
     R2->>R2: H₂ = ReLU(X @ A₂), Z₂ = H₂ @ B₂
     R3->>R3: H₃ = ReLU(X @ A₃), Z₃ = H₃ @ B₃
 
-    Note over R0,R3: [g-bar] Reduce-Scatter(SUM) along sequence (COMM_DEVICE)
+    Note over R0,R3: [g-bar] Reduce-Scatter(SUM) along sequence
     R0->>R0: Z₀' (S/n × D)
     R1->>R1: Z₁' (S/n × D)
     R2->>R2: Z₂' (S/n × D)
@@ -89,16 +89,16 @@ The demo builds identical full tensors via `build_full_inputs_and_weights`, comp
 Two functions in `5_sequence_parallel/1_megatron_sp.py` raise `NotImplementedError`:
 
 1. **`enter_tp_region(x_local, world_size, device)`** — g operator:
-   - Allocate `x_full` of shape `[SEQ, DIM]` on **`COMM_DEVICE`** (`cpu`).
-   - `dist.all_gather_into_tensor(x_full, x_local.to(COMM_DEVICE).contiguous())` — concatenates shards along dim 0 in rank order.
-   - Return `x_full.to(device)`.
+   - Allocate `x_full` of shape `[SEQ, DIM]` on the same `device`.
+   - `dist.all_gather_into_tensor(x_full, x_local.contiguous())` — concatenates shards along dim 0 in rank order.
+   - Return `x_full`.
 
 2. **`exit_tp_region(z_partial, world_size, device)`** — g-bar operator:
-   - Allocate `z_local` of shape `[SHARD, DIM]` on **`COMM_DEVICE`**.
-   - `dist.reduce_scatter_tensor(z_local, z_partial.to(COMM_DEVICE).contiguous(), op=dist.ReduceOp.SUM)`.
-   - Return `z_local.to(device)`.
+   - Allocate `z_local` of shape `[SHARD, DIM]` on the same `device`.
+   - `dist.reduce_scatter_tensor(z_local, z_partial.contiguous(), op=dist.ReduceOp.SUM)`.
+   - Return `z_local`.
 
-Golden rule: compute on `device`, move to **`COMM_DEVICE`** before collectives, move back after (a no-op on CPU/NCCL, kept for portability). Column- and row-parallel matmuls between the two TODOs are already wired from Module 2.
+Everything — compute and collectives — runs on the same `device` (gloo communicates CPU tensors, NCCL communicates GPU tensors directly). Column- and row-parallel matmuls between the two TODOs are already wired from Module 2.
 
 ## Run it
 

@@ -67,12 +67,11 @@ After a correct `synchronize_gradients`, all ranks print per-step local loss (wh
 
 Implement **`synchronize_gradients(model, world_size)`** in `1_data_parallel/1_ddp_demo.py`. For each `p` in `model.parameters()` where `p.grad` is not `None`:
 
-1. Move `p.grad` to **`COMM_DEVICE`** (where collectives run — a no-op on CPU/NCCL).
-2. Call `dist.all_reduce(grad_cpu, op=dist.ReduceOp.SUM)`.
-3. Divide by `world_size` to obtain the average.
-4. Write the result back into `p.grad` on `p`'s compute device.
+1. Call `dist.all_reduce(p.grad, op=dist.ReduceOp.SUM)` on the same `device` as the parameter.
+2. Divide by `world_size` to obtain the average.
+3. The averaged gradient remains in `p.grad`.
 
-`broadcast_initial_params` is already implemented and shows the same move-to-CPU, communicate, copy-back pattern.
+`broadcast_initial_params` is already implemented and shows the same in-place collective pattern.
 
 ## Run it
 
