@@ -115,12 +115,12 @@ def run(rank: int, world_size: int, device: torch.device) -> None:
     out = gather_heads(o_local, world_size, device)  # [SEQ, HEADS*HEAD_DIM]
 
     # Correctness self-check: full single-machine MLA reference.
-    cw = build_full_weights()
+    cw = {k: t.to(COMM_DEVICE) for k, t in build_full_weights().items()}
     c_kv = x.to(COMM_DEVICE) @ cw["W_DKV"]
     K = (c_kv @ cw["W_UK"]).view(SEQ, HEADS, HEAD_DIM)
     V = (c_kv @ cw["W_UV"]).view(SEQ, HEADS, HEAD_DIM)
     Q = (x.to(COMM_DEVICE) @ cw["W_Q"]).view(SEQ, HEADS, HEAD_DIM)
-    ref = torch.empty(SEQ, HEADS * HEAD_DIM)
+    ref = torch.empty(SEQ, HEADS * HEAD_DIM, device=COMM_DEVICE)
     for h in range(HEADS):
         s = (Q[:, h] @ K[:, h].transpose(0, 1)) * SCALE
         ref[:, h * HEAD_DIM : (h + 1) * HEAD_DIM] = torch.softmax(s, dim=-1) @ V[:, h]

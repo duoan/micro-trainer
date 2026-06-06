@@ -157,12 +157,12 @@ def run(rank: int, world_size: int, device: torch.device) -> None:
     out = hybrid_forward(rank, x_full, w1, w2, tp_group, pp_group, device)
 
     # forward self-check: stage-1 ranks must reproduce the single-machine network output
-    ref = torch.relu(x_full @ w1) @ w2
+    ref = (torch.relu(x_full @ w1) @ w2).to(COMM_DEVICE)
     if pp_i == 1:
         err = (out.to(COMM_DEVICE) - ref).abs().max().item()
         rank_print(rank, f"stage1 output {tuple(out.shape)} | max error vs single-machine={err:.2e}")
     else:
-        h_ref = torch.relu(x_full @ w1)
+        h_ref = torch.relu(x_full @ w1).to(COMM_DEVICE)
         err = (out.to(COMM_DEVICE) - h_ref).abs().max().item()
         rank_print(rank, f"stage0 hidden {tuple(out.shape)} | max error vs single-machine={err:.2e}")
 

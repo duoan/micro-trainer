@@ -133,7 +133,7 @@ def run(rank: int, world_size: int, device: torch.device) -> None:
     # Correctness self-check: gather all sequence shards, compare to single-machine MHA.
     gathered = torch.empty(SEQ, HID, device=COMM_DEVICE)
     dist.all_gather_into_tensor(gathered, o_local.to(COMM_DEVICE).contiguous())
-    ref = multihead_reference(q_full, k_full, v_full)
+    ref = multihead_reference(q_full, k_full, v_full).to(COMM_DEVICE)
     err = (gathered - ref).abs().max().item()
     rank0_print(rank, f"Ulysses-SP output shape = {tuple(gathered.shape)} | max error vs single-machine = {err:.2e}")
 

@@ -1,22 +1,34 @@
 """env_setup -- the foundation layer of micro-trainer.
 
 This package wraps up all the dirty, tedious plumbing of "simulating a GPU
-cluster with multiple processes on a single Mac", so that in every module you
+cluster with multiple processes on a single box", so that in every module you
 can focus purely on hand-writing the distributed operators and scheduling logic.
 
-It exposes only three core things:
+It auto-adapts to whatever hardware you run on:
+
+    * NVIDIA GPU box  -> backend "nccl", each rank binds its own `cuda:i`.
+    * Apple Silicon   -> backend "gloo", all ranks share one `mps` device.
+    * Plain CPU       -> backend "gloo", everything on `cpu`.
+
+You can force a choice with the env var ``MICRO_TRAINER_BACKEND=gloo|nccl``.
+
+It exposes a few core things:
 
     launch_teaching_cluster(world_size, func)
         Spin up `world_size` processes, each pretending to be one "GPU rank".
+        The backend is auto-detected (override with `backend=...`).
 
     bind_device(rank)
-        Bind a compute device to each rank (a shared `mps` on Mac, or `cpu`).
+        Bind a compute device to each rank: `cuda:rank` on a GPU box, a shared
+        `mps` on Apple Silicon, or `cpu`.
 
     COMM_DEVICE
-        A very important constant. On Mac the gloo backend does NOT support
-        collective communication (dist.all_reduce / all_gather / ...) on `mps`
-        tensors -- it only accepts CPU tensors. So "compute on mps, move to
-        COMM_DEVICE before communicating" is the golden rule every module obeys.
+        A very important constant: where collective tensors must live.
+        * Under NCCL it equals the rank's CUDA device, so the golden-rule move
+          ``tensor.to(COMM_DEVICE)`` is a free no-op (NCCL talks GPU directly).
+        * Under gloo it is `cpu`, because gloo cannot run collectives on `mps`
+          tensors. So "compute on mps, move to COMM_DEVICE before communicating"
+          is the rule on Mac -- and it stays correct verbatim on a GPU box too.
 
 It also ships a set of hand-rolled terminal color / printing helpers so you can
 draw flashy Timeline dashboards.
@@ -41,6 +53,7 @@ import torch.multiprocessing as mp
 __all__ = [
     "launch_teaching_cluster",
     "bind_device",
+    "default_backend",
     "COMM_DEVICE",
     "C",
     "rank_print",
@@ -55,9 +68,31 @@ __all__ = [
     "render_mesh",
 ]
 
-# gloo can only run collectives on CPU tensors, so the "communication device"
-# is always cpu. Remember the rule: compute on mps, communicate on cpu.
-COMM_DEVICE = torch.device("cpu")
+
+# --------------------------------------------------------------------------- #
+# Backend + communication-device auto-detection (NCCL on GPU, gloo on Mac/CPU)
+# --------------------------------------------------------------------------- #
+def default_backend() -> str:
+    """Pick the communication backend for this machine.
+
+    Order of preference: an explicit ``MICRO_TRAINER_BACKEND`` env override,
+    then NCCL when CUDA + NCCL are available (real GPU box), otherwise gloo
+    (Apple Silicon / CPU).
+    """
+    forced = os.environ.get("MICRO_TRAINER_BACKEND", "").strip().lower()
+    if forced in ("nccl", "gloo"):
+        return forced
+    if torch.cuda.is_available() and dist.is_nccl_available():
+        return "nccl"
+    return "gloo"
+
+
+# Where collective tensors must live. Under NCCL that is the current CUDA device
+# (so `tensor.to(COMM_DEVICE)` is a free no-op and collectives run on the GPU);
+# under gloo it is cpu (gloo cannot communicate `mps`/`cuda` tensors via mps).
+# `torch.device("cuda")` (no index) resolves to whatever `torch.cuda.set_device`
+# picked for this rank, so a single constant works correctly across all ranks.
+COMM_DEVICE = torch.device("cuda") if default_backend() == "nccl" else torch.device("cpu")
 
 
 # --------------------------------------------------------------------------- #
@@ -308,16 +343,21 @@ def render_mesh(mesh: DeviceMesh, highlight_axis: str | None = None) -> str:
 def bind_device(rank: int) -> torch.device:
     """Bind a compute device to the current rank.
 
-    On a real cluster this step is `torch.cuda.set_device(rank)`, where each
-    process owns one GPU. On a Mac we only have a single shared MPS device in
-    unified memory -- all processes share it, which conveniently lets you observe
-    "multiple ranks running concurrently" at very low cost.
+    * GPU box: each process owns one GPU. We call `torch.cuda.set_device(i)` and
+      return `cuda:i` (i = rank, wrapped by device_count so it still runs when
+      you simulate more ranks than you have GPUs -- handy for teaching).
+    * Apple Silicon: there is a single shared MPS device in unified memory, so
+      all processes share it. This conveniently lets you watch "multiple ranks
+      running concurrently" at very low cost.
+    * Otherwise: plain CPU.
     """
+    if torch.cuda.is_available():
+        idx = rank % torch.cuda.device_count()
+        torch.cuda.set_device(idx)
+        return torch.device("cuda", idx)
     if torch.backends.mps.is_available():
-        device = torch.device("mps")
-    else:
-        device = torch.device("cpu")
-    return device
+        return torch.device("mps")
+    return torch.device("cpu")
 
 
 # --------------------------------------------------------------------------- #
@@ -351,8 +391,10 @@ def _worker(
     os.environ["RANK"] = str(rank)
     os.environ["WORLD_SIZE"] = str(world_size)
 
-    dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
+    # Bind the device first: NCCL wants `torch.cuda.set_device` set before init
+    # so each rank initializes on its own GPU instead of all piling onto cuda:0.
     device = bind_device(rank)
+    dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
     try:
         func(rank, world_size, device, *user_args)
     finally:
@@ -367,7 +409,7 @@ def launch_teaching_cluster(
     world_size: int,
     func: Callable[..., Any],
     *args: Any,
-    backend: str = "gloo",
+    backend: str | None = None,
     master_addr: str = "127.0.0.1",
     base_port: int = 29500,
 ) -> None:
@@ -378,7 +420,8 @@ def launch_teaching_cluster(
         func: The function each rank runs, with the convention
               ``func(rank: int, world_size: int, device: torch.device, *args)``.
         *args: Extra positional args forwarded to `func`.
-        backend: Communication backend. Use "gloo" on Mac (NCCL is NVIDIA-only).
+        backend: Communication backend. Defaults to auto-detection
+              (NCCL on a GPU box, gloo on Mac/CPU); pass "gloo"/"nccl" to force.
         master_addr / base_port: Rendezvous address; a free port is picked
               automatically, so there is nothing to configure by hand.
 
@@ -392,17 +435,30 @@ def launch_teaching_cluster(
         if __name__ == "__main__":
             launch_teaching_cluster(world_size=4, func=run)
     """
+    backend = backend or default_backend()
     port = str(_find_free_port(base_port))
+
+    if backend == "nccl":
+        accel = f"cuda x{torch.cuda.device_count()}"
+    elif torch.backends.mps.is_available():
+        accel = "mps"
+    else:
+        accel = "cpu"
 
     print(
         banner(
             f"launch_teaching_cluster | world_size={world_size} "
-            f"backend={backend} | {master_addr}:{port}",
+            f"backend={backend} compute={accel} | {master_addr}:{port}",
             color=C.BOLD + C.CYAN,
         )
     )
-    if not torch.backends.mps.is_available():
-        print(f"{C.YELLOW}MPS not detected, falling back to CPU (works the same, just slower).{C.RESET}")
+    if backend == "nccl" and torch.cuda.device_count() < world_size:
+        print(
+            f"{C.YELLOW}Only {torch.cuda.device_count()} GPU(s) for {world_size} ranks; "
+            f"ranks will share GPUs round-robin (fine for small teaching runs).{C.RESET}"
+        )
+    elif backend == "gloo" and not torch.backends.mps.is_available() and not torch.cuda.is_available():
+        print(f"{C.YELLOW}No accelerator detected, running on CPU (works the same, just slower).{C.RESET}")
 
     # Use spawn to start child processes; join=True blocks until all ranks exit.
     mp.spawn(

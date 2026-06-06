@@ -88,7 +88,7 @@ def run(rank: int, world_size: int, device: torch.device) -> None:
 
     y = row_parallel_forward(x_shard, w_shard, rank, world_size, device)
 
-    ref = x_full @ full_w
+    ref = x_full.to(COMM_DEVICE) @ full_w.to(COMM_DEVICE)
     err = (y.to(COMM_DEVICE) - ref).abs().max().item()
     rank0_print(rank, f"Row-parallel output shape = {tuple(y.shape)} | max error vs single-machine = {err:.2e}")
 

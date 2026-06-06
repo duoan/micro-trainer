@@ -85,7 +85,7 @@ def run(rank: int, world_size: int, device: torch.device) -> None:
     y = column_parallel_forward(x, w_shard, rank, world_size, device)
 
     # Correctness self-check: compare against the single-machine full-W result
-    ref = x.to(COMM_DEVICE) @ full_w
+    ref = x.to(COMM_DEVICE) @ full_w.to(COMM_DEVICE)
     err = (y.to(COMM_DEVICE) - ref).abs().max().item()
     rank0_print(rank, f"Column-parallel output shape = {tuple(y.shape)} | max error vs single-machine = {err:.2e}")
 

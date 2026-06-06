@@ -143,7 +143,7 @@ def run(rank: int, world_size: int, device: torch.device) -> None:
     # Correctness self-check: gather all local outputs, compare to single-machine attention.
     gathered = torch.empty(SEQ, DIM, device=COMM_DEVICE)
     dist.all_gather_into_tensor(gathered, out_local.to(COMM_DEVICE).contiguous())
-    ref = torch.softmax((q_full @ k_full.transpose(0, 1)) * SCALE, dim=-1) @ v_full
+    ref = (torch.softmax((q_full @ k_full.transpose(0, 1)) * SCALE, dim=-1) @ v_full).to(COMM_DEVICE)
     err = (gathered - ref).abs().max().item()
     rank0_print(rank, f"Ring-Attention output shape = {tuple(gathered.shape)} | max error vs single-machine = {err:.2e}")
 

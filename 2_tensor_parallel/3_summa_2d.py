@@ -126,7 +126,7 @@ def run(rank: int, world_size: int, device: torch.device) -> None:
     y_blk = summa_forward(x_blk, w_blk, row, col, q, row_group, col_group, device)
 
     # self-check: my output block must equal the matching block of single-machine X @ W
-    ref = block(full_x @ full_w, row, col, bi_m, bi_n)
+    ref = block(full_x @ full_w, row, col, bi_m, bi_n).to(COMM_DEVICE)
     err = (y_blk.to(COMM_DEVICE) - ref).abs().max().item()
     rank_print(rank, f"output block ({row},{col}) shape={tuple(y_blk.shape)} | max error vs single-machine={err:.2e}")
     rank0_print(rank, "2D SUMMA done: each rank held only a 1/N block; comm stayed within row/col groups.")

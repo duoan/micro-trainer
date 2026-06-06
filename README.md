@@ -6,9 +6,10 @@
 
 `micro-trainer` is a hands-on, one-command-runnable teaching project for distributed
 training. It needs no GPU cluster and no environment variables -- clone it, run
-`python xxx_demo.py`, and it spins up a "pretend GPU cluster" with multiple processes
-on an Apple-silicon Mac, so you can see exactly how data / tensor / pipeline / sequence /
-context parallelism and MoE communication overlap actually happen.
+`python xxx_demo.py`, and it spins up a "pretend GPU cluster" with multiple processes. It
+auto-adapts to your hardware (NCCL on a GPU box, gloo + MPS on an Apple-silicon Mac, gloo +
+CPU otherwise), so you can see exactly how data / tensor / pipeline / sequence / context
+parallelism and MoE communication overlap actually happen.
 
 The foundation (multi-process rendezvous, device binding, port allocation, Timeline
 dashboard base) is already built for you; **the hardest distributed operators and
@@ -17,36 +18,40 @@ with `# TODO(you)`.
 
 ---
 
-## How does one Mac simulate a cluster?
+## How does one box simulate a cluster?
 
 In real training, each process owns one GPU and processes talk to each other over
-NCCL + an IB NIC. What we do on a Mac is essentially the same, we just swap "cards" for
-"processes":
+NCCL + an IB NIC. What we do here is essentially the same, we just swap "cards" for
+"processes" and let `env_setup` **auto-detect your hardware**:
 
 - **Processes as cards**: `mp.spawn` launches `world_size` child processes; each is one
   `rank` (~ one GPU).
-- **gloo as the backend**: NCCL is NVIDIA-only, so on Mac we use PyTorch's built-in
-  **gloo** (a CPU communication backend).
-- **MPS for compute**: model forward/backward runs on Apple's **MPS** (the GPU in
-  unified memory).
+- **Backend auto-detection**:
+  - **NVIDIA GPU box** -> backend **NCCL**, and each rank binds its own `cuda:i`.
+  - **Apple Silicon** -> backend **gloo** (a CPU comm backend), all ranks share one **MPS** device.
+  - **Plain CPU** -> backend **gloo**, everything on `cpu`.
+  - Force a choice any time with `MICRO_TRAINER_BACKEND=gloo|nccl`.
 
-### One golden rule across the whole project: compute on MPS, communicate on CPU
+So the same `python xxx_demo.py` runs on a Mac laptop *and* on an 8-GPU server with no
+code changes.
 
-This is the most important "real-world gotcha" in the project, so remember it:
+### One golden rule across the whole project: compute on `device`, communicate on `COMM_DEVICE`
 
-> **The gloo backend does not support collective communication on MPS tensors.**
-> `dist.all_reduce` / `all_gather` / `send` etc. require tensors to be **on CPU**.
+`env_setup` exposes a `COMM_DEVICE` constant -- the device collectives must run on:
 
-So every module follows the same pattern: **do compute on `device` (MPS), then
-`.to(COMM_DEVICE)` to move tensors to CPU before communicating, and move them back
-afterward.** This conveniently forces you to see that "compute" and "communication" are
-two separate things -- which is the entire crux of distributed systems optimization.
+- **Under gloo (Mac/CPU)**: `COMM_DEVICE = cpu`, because **gloo cannot run collectives on
+  MPS tensors**. So you compute on `device` (MPS) and `.to(COMM_DEVICE)` to move tensors to
+  CPU before `dist.all_reduce` / `all_gather` / `send`, then move them back.
+- **Under NCCL (GPU)**: `COMM_DEVICE` *is* the rank's CUDA device, so `.to(COMM_DEVICE)` is a
+  **free no-op** -- NCCL talks GPU-to-GPU directly.
 
-`env_setup` already provides the `COMM_DEVICE` (= `cpu`) constant; just use it.
+The beauty: **the exact same code** (`compute on device` -> `.to(COMM_DEVICE)` -> `communicate`
+-> `.to(device)`) is correct on both backends. It also forces you to see that "compute" and
+"communication" are two separate things -- the entire crux of distributed systems optimization.
 
 ---
 
-## One-command run (Mac native)
+## One-command run (Mac, GPU box, or CPU)
 
 Prereq: install [uv](https://docs.astral.sh/uv/) (or any environment that can install PyTorch).
 
@@ -62,8 +67,11 @@ uv run python 1_data_parallel/1_ddp_demo.py
 > at a `NotImplementedError` that says `TODO: ...` -- that is **intentional**! That is your
 > battle zone. Fill in the `# TODO` and it runs through.
 
-Machines without MPS work too: they fall back to CPU automatically, with identical
-behavior, just slower.
+The launcher auto-detects your hardware: **NCCL + one `cuda:i` per rank on a GPU box**,
+**gloo + shared MPS on Apple Silicon**, and **gloo + CPU otherwise**. The same command
+works everywhere. Override with `MICRO_TRAINER_BACKEND=gloo` (e.g. to force the CPU path on
+a GPU box). On a GPU box with fewer GPUs than ranks, ranks share GPUs round-robin -- fine
+for small teaching runs.
 
 ---
 
@@ -179,15 +187,16 @@ Every demo's bottom looks like this; you just write `run`:
 from env_setup import launch_teaching_cluster
 
 def run(rank, world_size, device):
-    ...  # your distributed core logic (device is MPS; .to(COMM_DEVICE) before communicating)
+    ...  # your distributed core logic (compute on device; .to(COMM_DEVICE) before communicating)
 
 if __name__ == "__main__":
     launch_teaching_cluster(world_size=4, func=run)
 ```
 
-`launch_teaching_cluster` handles all the dirty work: auto-find a free port, set
-`MASTER_ADDR/PORT`, `init_process_group`, bind a device per rank, and cleanly
-`barrier` + `destroy_process_group` when done.
+`launch_teaching_cluster` handles all the dirty work: auto-detect the backend
+(NCCL/gloo), auto-find a free port, set `MASTER_ADDR/PORT`, `init_process_group`, bind a
+device per rank (`cuda:i` / shared MPS / CPU), and cleanly `barrier` +
+`destroy_process_group` when done.
 
 `env_setup` also hands you small dashboard tools: `rank_print` / `rank0_print` (colored,
 timestamped multi-process logs), `banner` / `bar` (ASCII banners and comparison bars),
@@ -198,8 +207,9 @@ timestamped multi-process logs), `banner` / `bar` (ASCII banners and comparison 
 
 ## Five geeky selling points
 
-1. **One-command run (Mac native)**: `mp.spawn` is built in; `python xxx_demo.py` spins up
-   the processes directly, zero environment variables.
+1. **One-command run, any hardware**: `mp.spawn` is built in; `python xxx_demo.py` spins up
+   the processes directly, zero environment variables. The backend auto-adapts -- NCCL on a
+   GPU box, gloo + MPS on a Mac, gloo + CPU otherwise.
 2. **Artificial topology simulation (Traffic Shaper)**: `topology_sim.py` uses `time.sleep`
    to manufacture a "cross-machine IB NIC" bottleneck inside the Mac's fast unified memory,
    specifically to showcase the power of Tile Overlap.

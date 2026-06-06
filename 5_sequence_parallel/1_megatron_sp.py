@@ -105,7 +105,7 @@ def run(rank: int, world_size: int, device: torch.device) -> None:
     # Correctness self-check: gather all shards and compare to the single-machine reference.
     gathered = torch.empty(SEQ, DIM, device=COMM_DEVICE)
     dist.all_gather_into_tensor(gathered, z_local.to(COMM_DEVICE).contiguous())
-    ref = torch.relu(x_full @ a_full) @ b_full
+    ref = (torch.relu(x_full @ a_full) @ b_full).to(COMM_DEVICE)
     err = (gathered - ref).abs().max().item()
     rank0_print(rank, f"SP output (gathered) shape = {tuple(gathered.shape)} | max error vs single-machine = {err:.2e}")
 
