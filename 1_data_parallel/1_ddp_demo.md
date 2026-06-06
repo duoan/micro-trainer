@@ -1,29 +1,34 @@
-# Naive DDP: Hand-Written Gradient All-Reduce
+# Naive DDP: A From-Scratch DDP `Module` (Level 1)
 
-> Each rank trains on a different data shard, then averages local gradients via All-Reduce so the update matches one large global batch.
+> Each rank trains on a different data shard, then averages local gradients via one All-Reduce so the update matches one large global batch. Packaged as `MicroDDP(nn.Module)`.
 
 ## TL;DR
 
 - Data is sharded across ranks; each rank runs forward + backward on its slice only.
 - Parameters are replicated on every rank; gradients must be averaged before the optimizer step.
 - Averaging = one **All-Reduce(SUM)** per parameter gradient, then divide by `world_size`.
-- Initial weights are **broadcast** from rank 0 so all ranks start identical.
+- Initial weights are **broadcast** from rank 0 (inside `MicroDDP.__init__`) so all ranks start identical.
 
 ## The problem
 
-Training on one GPU limits batch size and throughput. Data parallelism replicates the model on multiple ranks and splits the batch, so each rank computes gradients on a different slice. Because every rank holds the same parameters, those local gradients must be combined into one global average each step — otherwise ranks would diverge. Naive DDP makes that contract explicit: you hand-write the gradient sync instead of hiding it inside `DistributedDataParallel`.
+Training on one GPU limits batch size and throughput. Data parallelism replicates the model on multiple ranks and splits the batch, so each rank computes gradients on a different slice. Because every rank holds the same parameters, those local gradients must be combined into one global average each step — otherwise ranks diverge. `MicroDDP` is our hand-written stand-in for `torch.nn.parallel.DistributedDataParallel`: `ddp = MicroDDP(model, world_size)`, call `ddp(x)` like a normal module, and after `backward()` call `sync_grads()` to average.
+
+This level is the baseline. Two follow-ups keep the same math but make the communication faster:
+
+- [`2_ddp_bucketing.py`](2_ddp_bucketing.md) — fuse every grad into a single All-Reduce.
+- [`3_ddp_overlap.py`](3_ddp_overlap.md) — fire each grad's All-Reduce from a backward hook, overlapping comm with compute.
 
 ## Algorithm
 
-1. **Initialize**: Rank 0 holds the canonical parameters; **broadcast** every parameter tensor to all ranks (`broadcast_initial_params`, already provided).
-2. **Shard data**: Build one global batch of size 64, then give each rank a disjoint slice (rank `r` gets indices `[r * per, (r+1) * per)`).
-3. **Local forward + backward**: Each rank runs `TinyMLP` on its shard and produces **local** gradients $g_i$.
-4. **Synchronize gradients**: For each parameter, compute the global average
+1. **Initialize**: `MicroDDP.__init__` **broadcasts** every parameter from rank 0 so all ranks start identical (provided).
+2. **Shard data**: build one global batch of size 64, give each rank a disjoint slice.
+3. **Local forward + backward**: each rank runs `TinyMLP` on its shard and produces **local** gradients $g_i$.
+4. **Synchronize** (`sync_grads`, your battle zone): for each parameter, compute the global average
    $$g = \frac{1}{N}\sum_{i=0}^{N-1} g_i$$
-   via **All-Reduce(SUM)** followed by division by `world_size` ($N$).
-5. **Optimizer step**: Apply SGD with the averaged gradients; because params started identical and grads were averaged, all ranks stay in sync.
+   via **All-Reduce(SUM)** then divide by `world_size` ($N$).
+5. **Optimizer step**: SGD with the averaged gradients keeps all ranks in sync.
 
-This is mathematically equivalent to training on one batch of size `GLOBAL_BATCH`.
+Mathematically equivalent to training on one batch of size `GLOBAL_BATCH`.
 
 ## Communication pattern
 
@@ -34,44 +39,32 @@ sequenceDiagram
     participant R2 as Rank 2
     participant R3 as Rank 3
 
-    Note over R0,R3: Startup — broadcast params from rank 0
+    Note over R0,R3: MicroDDP.__init__ — broadcast params from rank 0
     R0->>R1: broadcast(param)
     R0->>R2: broadcast(param)
     R0->>R3: broadcast(param)
 
-    Note over R0,R3: Per step — local backward, then gradient sync
-    R0->>R0: backward → local g₀
-    R1->>R1: backward → local g₁
-    R2->>R2: backward → local g₂
-    R3->>R3: backward → local g₃
-
-    R0->>R0: All-Reduce(SUM) on each grad
-    R1->>R1: All-Reduce(SUM) on each grad
-    R2->>R2: All-Reduce(SUM) on each grad
-    R3->>R3: All-Reduce(SUM) on each grad
-
-    Note over R0,R3: Each rank holds g = (1/N) Σ gᵢ, then local optimizer.step()
+    Note over R0,R3: Per step — local backward → local gᵢ, then sync_grads()
+    R0->>R0: All-Reduce(SUM) each grad, ÷ world_size
+    R1->>R1: All-Reduce(SUM) each grad, ÷ world_size
+    R2->>R2: All-Reduce(SUM) each grad, ÷ world_size
+    R3->>R3: All-Reduce(SUM) each grad, ÷ world_size
+    Note over R0,R3: Each rank now holds g = (1/N) Σ gᵢ, then local optimizer.step()
 ```
 
 ## What you'll see
 
-On launch, `launch_teaching_cluster` prints a banner with `world_size=4` and `backend=gloo`, then spawns four color-coded rank logs. Each rank reports its local shard shape, e.g. `(16, 16)` for a global batch of 64 split four ways. Before your implementation, the run stops at:
+The cluster banner (`world_size=4`, `backend=gloo`) and four color-coded rank logs reporting their local shard shape, e.g. `(16, 16)`. Before your implementation the run stops at:
 
 ```
-NotImplementedError: TODO: implement cross-rank gradient All-Reduce averaging in synchronize_gradients
+NotImplementedError: TODO: average each parameter's gradient across ranks in sync_grads
 ```
 
-After a correct `synchronize_gradients`, all ranks print per-step local loss (which will differ per rank because each sees different data) and finish with rank 0 printing: *"Naive DDP done: if all ranks' final params match, gradient sync is correct."*
+Once correct, rank 0 prints `sync_grads | max err vs full-batch grad = 2.4e-07` (the averaged grad matches the gradient on the full global batch), then per-step local losses, and a done line.
 
 ## Your battle zone
 
-Implement **`synchronize_gradients(model, world_size)`** in `1_data_parallel/1_ddp_demo.py`. For each `p` in `model.parameters()` where `p.grad` is not `None`:
-
-1. Call `dist.all_reduce(p.grad, op=dist.ReduceOp.SUM)` on the same `device` as the parameter.
-2. Divide by `world_size` to obtain the average.
-3. The averaged gradient remains in `p.grad`.
-
-`broadcast_initial_params` is already implemented and shows the same in-place collective pattern.
+Implement **`MicroDDP.sync_grads`** in `1_data_parallel/1_ddp_demo.py`. Each rank holds gradients from its own shard only; make every rank end up with the average across all ranks, parameter by parameter. Think about which single collective sums a tensor across ranks, and what turns that sum into a mean. (Skip params whose `grad` is `None`.)
 
 ## Run it
 

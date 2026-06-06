@@ -21,7 +21,7 @@ Your battle zone (two TODOs below):
     - `all_gather_full_params`: All-Gather the per-rank shards into the full flat vector.
     - `reduce_scatter_grad`: Reduce-Scatter the full gradient so each rank keeps its shard.
 
-Run: python 1_data_parallel/3_fsdp_demo.py
+Run: python 1_data_parallel/5_fsdp_demo.py
 """
 
 from __future__ import annotations

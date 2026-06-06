@@ -57,7 +57,7 @@ When correct, every step prints `mesh-sync err vs global avg` ~`1e-7`, confirmin
 
 ## Your battle zone
 
-One function in `1_data_parallel/4_hsdp_demo.py` — `hsdp_sync_grad(full_grad, shard_group, replica_group, shard_idx)`:
+One function in `1_data_parallel/6_hsdp_demo.py` — `hsdp_sync_grad(full_grad, shard_group, replica_group, shard_idx)`:
 
 1. `dist.reduce_scatter(my, chunks, op=SUM, group=shard_group)` over `SHARD` chunks of the full gradient.
 2. `dist.all_reduce(my, op=SUM, group=replica_group)`.
@@ -68,7 +68,7 @@ The 2D process groups are pre-built in `build_mesh_groups` (note the collective 
 ## Run it
 
 ```bash
-python 1_data_parallel/4_hsdp_demo.py
+python 1_data_parallel/6_hsdp_demo.py
 ```
 
 ## Papers & further reading

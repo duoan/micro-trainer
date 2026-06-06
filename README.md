@@ -86,10 +86,12 @@ micro-trainer/
 |   `-- __init__.py             #   launch_teaching_cluster / bind_device / Timeline dashboard
 |
 |-- 1_data_parallel/            # Module 1: data parallelism & memory sharding
-|   |-- 1_ddp_demo.py             #   baseline: naive DDP (hand-written gradient All-Reduce averaging)
-|   |-- 2_zero1_demo.py           #   evolution: ZeRO-1 (optimizer state sharding + All-Gather)
-|   |-- 3_fsdp_demo.py            #   evolution: ZeRO-3 / FSDP (param+grad sharding, All-Gather + Reduce-Scatter)
-|   `-- 4_hsdp_demo.py            #   evolution: HSDP (2D mesh -- intra-node FSDP + inter-node DDP)
+|   |-- 1_ddp_demo.py             #   L1: naive DDP as MicroDDP module (one All-Reduce per param)
+|   |-- 2_ddp_bucketing.py        #   L2: fuse all grads into ONE All-Reduce (bucketing)
+|   |-- 3_ddp_overlap.py          #   L3: async All-Reduce fired from backward hooks (overlap)
+|   |-- 4_zero1_demo.py           #   evolution: ZeRO-1 (optimizer state sharding + All-Gather)
+|   |-- 5_fsdp_demo.py            #   evolution: ZeRO-3 / FSDP (param+grad sharding, All-Gather + Reduce-Scatter)
+|   `-- 6_hsdp_demo.py            #   evolution: HSDP (2D mesh -- intra-node FSDP + inter-node DDP)
 |
 |-- 2_tensor_parallel/          # Module 2: Megatron matrix sharding
 |   |-- 1_column_parallel.py      #   baseline: column split (All-Gather concat)
@@ -148,11 +150,13 @@ ideas from the levels above it, so you always have the tools you need.
 | **0. Hello, collective** | ★☆☆☆☆ | [`1_data_parallel/1_ddp_demo.py`](1_data_parallel/1_ddp_demo.py) | [doc](1_data_parallel/1_ddp_demo.md) | a single `all_reduce` (gradient average) -- **start here** |
 | | ★☆☆☆☆ | [`2_tensor_parallel/1_column_parallel.py`](2_tensor_parallel/1_column_parallel.py) | [doc](2_tensor_parallel/1_column_parallel.md) | `all_gather` + concat |
 | | ★☆☆☆☆ | [`2_tensor_parallel/2_row_parallel.py`](2_tensor_parallel/2_row_parallel.py) | [doc](2_tensor_parallel/2_row_parallel.md) | `all_reduce` partial sums |
-| **1. Sharding** | ★★☆☆☆ | [`1_data_parallel/2_zero1_demo.py`](1_data_parallel/2_zero1_demo.py) | [doc](1_data_parallel/2_zero1_demo.md) | ownership + `broadcast` (shard optimizer state) |
-| | ★★☆☆☆ | [`1_data_parallel/3_fsdp_demo.py`](1_data_parallel/3_fsdp_demo.py) | [doc](1_data_parallel/3_fsdp_demo.md) | `all_gather` + `reduce_scatter` (shard params & grads) |
+| | ★★☆☆☆ | [`1_data_parallel/2_ddp_bucketing.py`](1_data_parallel/2_ddp_bucketing.py) | [doc](1_data_parallel/2_ddp_bucketing.md) | fuse all grads into ONE `all_reduce` (bucketing) |
+| | ★★★☆☆ | [`1_data_parallel/3_ddp_overlap.py`](1_data_parallel/3_ddp_overlap.py) | [doc](1_data_parallel/3_ddp_overlap.md) | async `all_reduce` from backward hooks (overlap) |
+| **1. Sharding** | ★★☆☆☆ | [`1_data_parallel/4_zero1_demo.py`](1_data_parallel/4_zero1_demo.py) | [doc](1_data_parallel/4_zero1_demo.md) | ownership + `broadcast` (shard optimizer state) |
+| | ★★☆☆☆ | [`1_data_parallel/5_fsdp_demo.py`](1_data_parallel/5_fsdp_demo.py) | [doc](1_data_parallel/5_fsdp_demo.md) | `all_gather` + `reduce_scatter` (shard params & grads) |
 | **2. Process-group meshes** | ★★★☆☆ | [`5_sequence_parallel/1_megatron_sp.py`](5_sequence_parallel/1_megatron_sp.py) | [doc](5_sequence_parallel/1_megatron_sp.md) | the `all_gather`/`reduce_scatter` conjugate pair |
 | | ★★★☆☆ | [`5_sequence_parallel/2_ulysses_sp.py`](5_sequence_parallel/2_ulysses_sp.py) | [doc](5_sequence_parallel/2_ulysses_sp.md) | `all_to_all` (swap seq ↔ head) |
-| | ★★★☆☆ | [`1_data_parallel/4_hsdp_demo.py`](1_data_parallel/4_hsdp_demo.py) | [doc](1_data_parallel/4_hsdp_demo.md) | build subgroups with `new_group` (2D mesh) |
+| | ★★★☆☆ | [`1_data_parallel/6_hsdp_demo.py`](1_data_parallel/6_hsdp_demo.py) | [doc](1_data_parallel/6_hsdp_demo.md) | build subgroups with `new_group` (2D mesh) |
 | | ★★★☆☆ | [`2_tensor_parallel/3_summa_2d.py`](2_tensor_parallel/3_summa_2d.py) | [doc](2_tensor_parallel/3_summa_2d.md) | row/column `broadcast` on a √N grid |
 | **3. Pipeline state machines** | ★★★☆☆ | [`3_pipeline_parallel/1_gpipe.py`](3_pipeline_parallel/1_gpipe.py) | [doc](3_pipeline_parallel/1_gpipe.md) | raw `send`/`recv` + F-then-B schedule |
 | | ★★★★☆ | [`3_pipeline_parallel/2_one_forward_backward.py`](3_pipeline_parallel/2_one_forward_backward.py) | [doc](3_pipeline_parallel/2_one_forward_backward.md) | the 1F1B warmup/steady/cooldown machine |

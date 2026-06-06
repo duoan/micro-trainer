@@ -56,7 +56,7 @@ Once both TODOs are correct, each step prints the local loss plus a `reduce_scat
 
 ## Your battle zone
 
-Two functions in `1_data_parallel/3_fsdp_demo.py`:
+Two functions in `1_data_parallel/5_fsdp_demo.py`:
 
 1. **`all_gather_full_params(local_shard, world_size)`** — build a list of $N$ empty tensors on the same `device`, `dist.all_gather` the shards, `torch.cat` into the full flat vector.
 2. **`reduce_scatter_grad(full_grad_flat, world_size)`** — split into $N$ contiguous chunks, `dist.reduce_scatter(out, chunks, op=SUM)`, return `out / world_size`.
@@ -64,7 +64,7 @@ Two functions in `1_data_parallel/3_fsdp_demo.py`:
 ## Run it
 
 ```bash
-python 1_data_parallel/3_fsdp_demo.py
+python 1_data_parallel/5_fsdp_demo.py
 ```
 
 ## Papers & further reading

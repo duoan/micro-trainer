@@ -1,22 +1,17 @@
-"""Module 1 - Level 1: Data Parallel, the simplest correct gradient sync.
+"""Module 1 - Level 2: Data Parallel with gradient bucketing.
 
 Principle in one line:
-    Data parallelism = each rank gets a DIFFERENT slice of the data, runs its own
-    forward + backward, and ends up with its OWN local gradients. Because all ranks
-    share the same parameters, every step must AVERAGE everyone's gradients before
-    the optimizer step -- that is what makes it equivalent to "training on one huge
-    batch". Averaging gradients = one All-Reduce(SUM) divided by world_size.
+    Naive DDP (Level 1) does one All-Reduce PER parameter. Every collective has a fixed
+    launch/latency cost, so a model with N parameter tensors pays that cost N times each
+    step. Gradient bucketing fixes this: pack all the grads into ONE contiguous buffer,
+    fire a SINGLE All-Reduce, then unpack the averaged result back into each `.grad`.
 
-We package it as `MicroDDP(nn.Module)` -- a from-scratch stand-in for PyTorch's
-`torch.nn.parallel.DistributedDataParallel`. Wrap any model: MicroDDP broadcasts the
-initial weights so every rank starts identical, `forward` delegates to the wrapped
-model, and after backward() you call `sync_grads()` to average gradients across ranks.
+    Same math as Level 1, far fewer calls. Real DDP groups grads into ~25 MB "buckets"
+    for exactly this reason (and to overlap each bucket with backward -- see Level 3).
 
-This is the baseline. Two follow-ups make the SAME averaging faster:
-    2_ddp_bucketing.py -- fuse every grad into ONE All-Reduce (amortize per-call cost).
-    3_ddp_overlap.py   -- fire each grad's All-Reduce from a backward hook (overlap comm).
+We keep the `MicroDDP(nn.Module)` wrapper from Level 1; only `sync_grads` changes.
 
-Run: python 1_data_parallel/1_ddp_demo.py
+Run: python 1_data_parallel/2_ddp_bucketing.py
 """
 
 from __future__ import annotations
@@ -52,14 +47,8 @@ class TinyMLP(nn.Module):
 
 
 class MicroDDP(nn.Module):
-    """A from-scratch stand-in for torch.nn.parallel.DistributedDataParallel.
-
-    On construction it broadcasts the weights from rank 0 so every rank starts
-    identical (a precondition for DDP correctness). `forward` delegates to the wrapped
-    module, so `ddp(x)` and `ddp.parameters()` behave like a bare model. After a local
-    backward() you call `sync_grads()` to turn each rank's local gradients into the
-    global average.
-    """
+    """Same wrapper as Level 1 (broadcast on init, delegate forward); the gradient sync
+    now coalesces everything into a single bucket."""
 
     def __init__(self, module: nn.Module, world_size: int) -> None:
         super().__init__()
@@ -72,17 +61,18 @@ class MicroDDP(nn.Module):
         return self.module(*args, **kwargs)
 
     def sync_grads(self) -> None:
-        """Average gradients across all ranks: the global mean must replace each local grad.
+        """Average every gradient with a SINGLE All-Reduce instead of one per parameter.
 
         ========================= YOUR BATTLE ZONE =========================
-        Each rank currently holds gradients computed on its OWN data shard only.
-        Make every rank end up with the average of all ranks' gradients, parameter
-        by parameter. Think: which single collective sums a tensor across ranks, and
-        what do you divide by to turn a sum into a mean? (Skip params whose grad is None.)
+        Flatten all the grads into one contiguous 1-D buffer, average that buffer with a
+        single All-Reduce(SUM)+divide, then write each averaged slice back into the grad
+        it came from. The crux is bookkeeping: grads have different shapes, so you must
+        track where each one lives in the flat buffer to restore it with the right shape.
+        (No torch private helpers -- reshape/cat/copy_ are all you need.)
         ====================================================================
         """
-        # TODO(you): hand-write the per-parameter gradient averaging.
-        raise NotImplementedError("TODO: average each parameter's gradient across ranks in sync_grads")
+        # TODO(you): build one flat bucket, all_reduce it once, then scatter back.
+        raise NotImplementedError("TODO: implement single-bucket gradient All-Reduce in sync_grads")
 
 
 def build_global_dataset(device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
@@ -102,17 +92,16 @@ def shard_for(x: torch.Tensor, y: torch.Tensor, rank: int, world_size: int) -> t
 
 
 def run(rank: int, world_size: int, device: torch.device) -> None:
-    torch.manual_seed(0)  # same seed on all ranks; the broadcast in MicroDDP is the safety net
+    torch.manual_seed(0)
     x_full, y_full = build_global_dataset(device)
     x_local, y_local = shard_for(x_full, y_full, rank, world_size)
     loss_fn = nn.MSELoss()
 
     ddp = MicroDDP(TinyMLP().to(device), world_size)
-    rank_print(rank, f"local data shard = {tuple(x_local.shape)} (global batch = {GLOBAL_BATCH})")
+    n_params = sum(1 for _ in ddp.module.parameters())
+    rank_print(rank, f"local shard = {tuple(x_local.shape)} | {n_params} param tensors -> 1 bucketed All-Reduce")
 
-    # Trusted reference (NO collective): with equal shards and a mean-reduction loss, the
-    # gradient averaged across shards equals the gradient on the FULL batch. Every rank
-    # can compute it locally, so it is a clean ground truth for your sync.
+    # Trusted reference (no collective): per-shard average == full-batch gradient.
     def snapshot() -> list[torch.Tensor]:
         return [p.grad.clone() for p in ddp.module.parameters() if p.grad is not None]
 
@@ -121,12 +110,11 @@ def run(rank: int, world_size: int, device: torch.device) -> None:
     ref = snapshot()
 
     ddp.zero_grad()
-    loss_fn(ddp(x_local), y_local).backward()  # each rank now holds only its shard's local grads
+    loss_fn(ddp(x_local), y_local).backward()
     ddp.sync_grads()
     err = max((g - r).abs().max().item() for g, r in zip(snapshot(), ref, strict=True))
-    rank0_print(rank, f"sync_grads | max err vs full-batch grad = {err:.2e}")
+    rank0_print(rank, f"bucketed sync | max err vs full-batch grad = {err:.2e}")
 
-    # A real training loop on top of your sync.
     opt = torch.optim.SGD(ddp.parameters(), lr=0.05)
     for step in range(STEPS):
         ddp.zero_grad()
@@ -136,7 +124,7 @@ def run(rank: int, world_size: int, device: torch.device) -> None:
         opt.step()
         rank_print(rank, f"step {step} | local_loss = {loss.item():.4f}")
 
-    rank0_print(rank, "Naive DDP done: averaged grads match the full-batch gradient. Next: bucketing, then overlap.")
+    rank0_print(rank, "Bucketed DDP done: one fused All-Reduce per step, same average as the naive version.")
 
 
 if __name__ == "__main__":
