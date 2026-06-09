@@ -1,28 +1,30 @@
 # ZeRO-1: Optimizer State Sharding
 
-> After the same gradient All-Reduce as DDP, each rank updates only its owned parameter slice and broadcasts the result so everyone holds the full, latest weights.
+> A from-scratch `MicroZeroOptimizer` (our stand-in for `torch.distributed.optim.ZeroRedundancyOptimizer`): wrap a real base optimizer over only the params this rank owns, so the optimizer state is genuinely sharded. Each step averages grads, runs the local optimizer, and All-Gathers the updated params.
 
 ## TL;DR
 
 - Naive DDP replicates **optimizer state** on every rank (e.g. Adam $m$, $v$ ≈ 2× params) — wasted memory at scale.
-- ZeRO-1 **shards optimizer state**: each rank owns and updates only a slice of the parameters.
-- Per step: All-Reduce gradients → local update on owned slice → **broadcast** (All-Gather equivalent) updated params to all ranks.
+- ZeRO-1 **shards optimizer state**: each rank builds its base optimizer (`Adam`, `SGD`, …) over only its owned parameter slice, so the state buffers exist on exactly one rank.
+- Per step: All-Reduce gradients → `local_opt.step()` updates only owned params → **All-Gather/broadcast** the updated params to all ranks.
 - Optimizer-state memory saved scales as $(1 - 1/N)$ for world size $N$.
 
 ## The problem
 
 In naive DDP every rank stores a full copy of the model **and** a full copy of the optimizer state. For Adam, momentum and variance buffers alone can be 2× the parameter footprint — multiplied by every GPU. ZeRO-1 (Zero Redundancy Optimizer, stage 1) asks: why duplicate optimizer state when each rank only needs to *apply* the update to a subset of parameters? Shard ownership across ranks, keep only local optimizer state, and reconstruct the full parameter vector after each step.
 
+`MicroZeroOptimizer` makes the sharding **concrete**: in `__init__` it computes `owner[i] = i % world_size`, then builds the base optimizer (`torch.optim.Adam` by default) over *only* the owned params. Because PyTorch optimizers lazily allocate their state per parameter they're given, the Adam $m/v$ buffers simply never exist on this rank for params it doesn't own — that is the memory win, not a hand-waved `p -= lr*g`.
+
 ## Algorithm
 
-1. **Assign ownership**: Partition parameter tensors across ranks (round-robin via `assign_param_owner`, already provided). Rank $r$ owns parameters where `owner[i] == r`.
+1. **Assign ownership** (in `__init__`): round-robin `owner[i] = i % world_size`; this rank's base optimizer is constructed over `[p for i,p in ... if owner[i]==rank]`.
 2. **Shard data**: Same as DDP — each rank gets a disjoint slice of the global batch.
 3. **Local forward + backward**: Each rank computes local gradients on its data shard.
-4. **All-Reduce gradients**: Average gradients globally (identical to DDP):
+4. **All-Reduce gradients** (`_average_grads`, battle zone 1): average gradients globally (identical to DDP):
    $$g = \frac{1}{N}\sum_{i=0}^{N-1} g_i$$
    using **All-Reduce(SUM)** then `/ world_size`.
-5. **Sharded optimizer step**: If `owner[i] == rank`, apply a local SGD update to parameter $i$: $p \leftarrow p - \text{lr} \cdot g$ (real ZeRO-1 stores Adam $m/v$ here; this demo uses SGD for simplicity).
-6. **Broadcast updated params**: For each parameter $i$, **`dist.broadcast(param_cpu, src=owner[i])`** so every rank receives the owner's latest value — equivalent to an All-Gather over parameter slices.
+5. **Sharded optimizer step** (provided): `self.local_opt.step()` updates only the owned params, using only their (sharded) optimizer state.
+6. **All-Gather params** (`_sync_params`, battle zone 2): each parameter's new value lives on `owner[i]`, so propagate it to everyone — a per-param `dist.broadcast(p.data, src=owner[i])` is the simplest All-Gather.
 
 Memory for optimizer state drops by a factor of $(1 - 1/N)$ because each rank holds state for roughly $1/N$ of the parameters.
 
@@ -46,9 +48,9 @@ sequenceDiagram
     R2->>R2: All-Reduce(SUM) → avg grad
     R3->>R3: All-Reduce(SUM) → avg grad
 
-    Note over R0,R3: Sharded update — only owner applies SGD
-    R0->>R0: update owned params
-    R1->>R1: update owned params
+    Note over R0,R3: Sharded update — only owner runs local_opt.step()
+    R0->>R0: Adam step on owned params (state sharded)
+    R1->>R1: Adam step on owned params (state sharded)
 
     Note over R0,R3: Broadcast each param from its owner
     R0->>R1: broadcast(param₀, src=0)
@@ -61,27 +63,23 @@ sequenceDiagram
 
 ## What you'll see
 
-The cluster launches with four ranks (`world_size=4`). Each rank prints which parameter indices it owns, e.g. `params I own = [0, 4] (of 6 parameter tensors)` for a `TinyMLP` with six weight/bias tensors. Per-step local loss is logged in color-coded interleaved output.
+The cluster launches with four ranks (`world_size=4`). Each rank prints which parameter indices it owns, e.g. `params I own = [0, 4] (of 6 tensors) -> Adam state only for these`. Per-step local loss is logged in color-coded interleaved output.
 
 Before implementation, the run fails at the first TODO:
 
 ```
-NotImplementedError: TODO: reduce_average_gradients -- hand-write gradient All-Reduce averaging
+NotImplementedError: TODO(1): average each grad across ranks in _average_grads
 ```
 
-After fixing that, it stops at the second TODO in `step_and_all_gather`. When both are correct, rank 0 prints: *"ZeRO-1 done: optimizer state is sharded, memory footprint drops with world_size."*
+After fixing that, it stops at the second TODO in `_sync_params`. When both are correct, rank 0 prints a cross-rank parameter drift of `0.00e+00` — proof that after the sharded step + All-Gather every rank holds bit-identical weights.
 
 ## Your battle zone
 
-Two functions in `1_data_parallel/4_zero1_demo.py`:
+Two methods of `MicroZeroOptimizer` in `1_data_parallel/4_zero1_demo.py` (the `__init__` ownership split and `local_opt.step()` are provided):
 
-**1. `reduce_average_gradients(model, world_size)`** — warm-up, same as DDP. For each `p.grad`: `dist.all_reduce(..., op=dist.ReduceOp.SUM)` on the same `device`, divide by `world_size`.
+**1. `_average_grads()`** — warm-up, same as DDP. For each `p.grad`: `dist.all_reduce(..., op=dist.ReduceOp.SUM)`, then divide by `world_size`.
 
-**2. `step_and_all_gather(model, owner, rank, world_size, lr)`** — the ZeRO-1 core. Iterate with `enumerate(model.parameters())`:
-- **A.** If `owner[i] == rank`: apply SGD locally, `p.data -= lr * p.grad`.
-- **B.** For every parameter (regardless of ownership): `dist.broadcast(p.data, src=owner[i])` on the same `device`.
-
-Using per-parameter broadcast from the owner is a simplification of All-Gather; concatenating slices via `dist.all_gather` is also valid.
+**2. `_sync_params()`** — the ZeRO-1 core. Each parameter's freshly updated value lives on `owner[i]`; propagate it to all ranks, e.g. `dist.broadcast(p.data, src=self.owner[i])` for every parameter. Per-parameter broadcast from the owner is a simplification of All-Gather; concatenating slices via `dist.all_gather` is also valid.
 
 ## Run it
 

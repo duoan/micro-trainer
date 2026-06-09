@@ -15,8 +15,8 @@ Training on one GPU limits batch size and throughput. Data parallelism replicate
 
 This level is the baseline. Two follow-ups keep the same math but make the communication faster:
 
-- [`2_ddp_bucketing.py`](2_ddp_bucketing.md) — fuse every grad into a single All-Reduce.
-- [`3_ddp_overlap.py`](3_ddp_overlap.md) — fire each grad's All-Reduce from a backward hook, overlapping comm with compute.
+- [`2_ddp_overlap.py`](2_ddp_overlap.md) — fire each grad's All-Reduce from a backward hook, overlapping comm with compute.
+- [`3_ddp_bucketing.py`](3_ddp_bucketing.md) — reduce whole buckets of grads asynchronously at once (the real DDP combo).
 
 ## Algorithm
 

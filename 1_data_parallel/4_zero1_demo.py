@@ -1,22 +1,22 @@
-"""Module 1 - Evolution 1: hand-written ZeRO-1 (optimizer state sharding + All-Gather).
+"""Module 1 - Evolution 1: hand-written ZeRO-1 (optimizer state sharding).
 
 Principle in one line:
     Naive DDP's pain point: every rank keeps the FULL optimizer state (e.g. Adam's
-    m/v, which is 2x the parameter count). Memory is wasted on duplicated copies.
+    m/v, which is ~2x the parameter count). That memory is pure duplication.
 
-    ZeRO-1's insight: not everyone needs the optimizer state. Shard the parameters
-    into world_size pieces and let EACH rank own/update only its own slice (holding
-    only that slice's optimizer state).
-        1. After backward, All-Reduce gradients into the global average (same as DDP).
-        2. Each rank uses only its own slice of the gradient to update its own params.
-        3. After the update, All-Gather the updated slices back into the full params
-           and broadcast them to everyone.
+    ZeRO-1's insight: not everyone needs the optimizer state. Partition the parameters
+    across ranks and let EACH rank own/update only its own slice -- so the optimizer
+    state for a parameter lives on exactly ONE rank instead of all N.
 
-    Memory saved = optimizer state * (1 - 1/world_size).
+We package it as `MicroZeroOptimizer` -- a from-scratch stand-in for PyTorch's
+`torch.distributed.optim.ZeroRedundancyOptimizer`. It wraps any base optimizer
+(SGD, Adam, ...) but builds it over ONLY this rank's owned params, so the state is
+genuinely sharded. Each `step()`:
+    1. All-Reduce gradients into the global average (same as DDP).        [battle zone 1]
+    2. Run the LOCAL optimizer -> updates only owned params (sharded state). [provided]
+    3. All-Gather the updated params so every rank holds the full weights.   [battle zone 2]
 
-Your battle zone (two TODOs below):
-    - `reduce_average_gradients`: the same gradient averaging as DDP (warm-up).
-    - `step_and_all_gather`: update only the params this rank owns, then All-Gather back.
+    Optimizer-state memory saved = state * (1 - 1/world_size).
 
 Run: python 1_data_parallel/4_zero1_demo.py
 """
@@ -25,11 +25,13 @@ from __future__ import annotations
 
 import pathlib
 import sys
+from collections.abc import Iterable
+from typing import Any
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 import torch
-import torch.distributed as dist  # noqa: F401  (you will write dist.* in the TODOs)
+import torch.distributed as dist  # noqa: E402  (communication written out in the open)
 import torch.nn as nn
 
 from env_setup import launch_teaching_cluster, rank0_print, rank_print
@@ -53,6 +55,78 @@ class TinyMLP(nn.Module):
         return self.net(x)
 
 
+class MicroZeroOptimizer:
+    """A from-scratch stand-in for torch.distributed.optim.ZeroRedundancyOptimizer (ZeRO-1).
+
+    Wraps a base optimizer (e.g. torch.optim.Adam) but constructs it over ONLY the
+    parameters this rank owns. That is the whole point: the optimizer state (Adam's
+    m/v, SGD's momentum buffer, ...) is then allocated for ~1/world_size of the model
+    on each rank instead of being replicated everywhere.
+
+    `step()` averages the gradients, runs the local (sharded) optimizer, and then
+    All-Gathers the freshly updated params so every rank ends the step holding the
+    full, identical weight vector.
+    """
+
+    def __init__(
+        self,
+        params: Iterable[nn.Parameter],
+        world_size: int,
+        rank: int,
+        optimizer_class: type[torch.optim.Optimizer] = torch.optim.Adam,
+        **opt_kwargs: Any,
+    ) -> None:
+        self.params: list[nn.Parameter] = list(params)
+        self.world_size = world_size
+        self.rank = rank
+
+        # Round-robin ownership by whole tensor: owner[i] = rank that updates param i.
+        # (Real ZeRO balances by element count; we shard whole tensors for clarity.)
+        self.owner = [i % world_size for i in range(len(self.params))]
+        self.mine = [i for i, o in enumerate(self.owner) if o == rank]
+
+        # The crux: build the base optimizer over ONLY this rank's params, so its
+        # state buffers exist for the owned shard alone -> sharded optimizer state.
+        owned_params = [self.params[i] for i in self.mine]
+        self.local_opt = optimizer_class(owned_params, **opt_kwargs)
+
+    def zero_grad(self) -> None:
+        for p in self.params:
+            p.grad = None
+
+    def _average_grads(self) -> None:
+        """Every rank needs the GLOBAL average gradient (same as DDP) before stepping.
+
+        ============================ YOUR BATTLE ZONE 1 ==========================
+        For each parameter's grad: turn each rank's local grad into the global mean.
+        Which one collective sums a tensor across ranks, and what do you divide by?
+        ==========================================================================
+        """
+        for p in self.params:
+            if p.grad is None:
+                continue
+            # TODO(you): all_reduce(SUM) then divide by world_size.
+            raise NotImplementedError("TODO(1): average each grad across ranks in _average_grads")
+
+    @torch.no_grad()
+    def _sync_params(self) -> None:
+        """After the sharded step, only each owner holds its params' new values.
+
+        ============================ YOUR BATTLE ZONE 2 ==========================
+        Make every rank hold the full, up-to-date weights again: each parameter's new
+        value lives on owner[i], so propagate it to everyone. (A per-param broadcast
+        from src=owner[i] is the simplest All-Gather; all_gather + concat also works.)
+        ==========================================================================
+        """
+        # TODO(you): send each owner's updated param to all ranks.
+        raise NotImplementedError("TODO(2): all-gather/broadcast the updated params in _sync_params")
+
+    def step(self) -> None:
+        self._average_grads()  # battle zone 1: global grad average
+        self.local_opt.step()  # provided: updates ONLY owned params (state is sharded)
+        self._sync_params()    # battle zone 2: reconstruct the full param vector
+
+
 def make_shard(rank: int, world_size: int, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
     g = torch.Generator().manual_seed(42)
     x = torch.randn(GLOBAL_BATCH, IN_DIM, generator=g)
@@ -63,81 +137,32 @@ def make_shard(rank: int, world_size: int, device: torch.device) -> tuple[torch.
     return x[sl].to(device), y[sl].to(device)
 
 
-def assign_param_owner(num_params: int, world_size: int) -> list[int]:
-    """Decide which rank owns the update of each parameter tensor (simple round-robin).
-
-    Returns a list of length num_params, owner[i] = rank that owns parameter i.
-    (Advanced: real ZeRO does a more balanced flatten-and-split by element count;
-    here we shard by whole tensors for clarity.)
-    """
-    return [i % world_size for i in range(num_params)]
-
-
-def reduce_average_gradients(model: nn.Module, world_size: int) -> None:
-    """Global gradient averaging -- identical to ddp_demo; nail this first as a warm-up.
-
-    ============================ YOUR BATTLE ZONE 1 ==========================
-    For each p.grad: all_reduce(SUM) -> divide by world_size -> done.
-    ==========================================================================
-    """
-    for p in model.parameters():
-        if p.grad is None:
-            continue
-        # TODO(you): all_reduce to average gradients
-        raise NotImplementedError("TODO: reduce_average_gradients -- hand-write gradient All-Reduce averaging")
-
-
-def step_and_all_gather(
-    model: nn.Module,
-    owner: list[int],
-    rank: int,
-    world_size: int,
-    lr: float,
-) -> None:
-    """The soul of ZeRO-1: each rank updates only its own params, then All-Gather back to full params.
-
-    ============================ YOUR BATTLE ZONE 2 ==========================
-    Iterate over parameters (use enumerate to get index i):
-        A. If owner[i] == rank: this is "my parameter". Take one SGD step with the
-           local (already averaged) gradient: p.data -= lr * p.grad.
-           (Real ZeRO-1 holds Adam m/v state here; this demo uses SGD to get the
-           skeleton running first.)
-        B. Regardless of ownership, after the update everyone must see the latest
-           value: dist.broadcast(p.data, src=owner[i]) sends the owner's updated
-           parameter to all ranks.
-           (broadcast is an equivalent simplification of all_gather; you can also
-           literally use all_gather + concatenation to stay closer to the paper.)
-
-    Comm runs directly on each param's device. Use owner[i] with index i.
-    ==========================================================================
-    """
-    # TODO(you): use owner[i] to decide local update, then broadcast/all_gather latest params to all ranks
-    raise NotImplementedError("TODO: step_and_all_gather -- hand-write sharded update + All-Gather/Broadcast back")
-
-
 def run(rank: int, world_size: int, device: torch.device) -> None:
     torch.manual_seed(0)
     model = TinyMLP().to(device)
+    # Broadcast initial weights so every rank starts identical (precondition for ZeRO).
+    for p in model.parameters():
+        dist.broadcast(p.data, src=0)
 
-    params = list(model.parameters())
-    owner = assign_param_owner(len(params), world_size)
-    mine = [i for i, o in enumerate(owner) if o == rank]
-    rank_print(rank, f"params I own = {mine} (of {len(params)} parameter tensors)")
+    opt = MicroZeroOptimizer(model.parameters(), world_size, rank, optimizer_class=torch.optim.Adam, lr=0.05)
+    rank_print(rank, f"params I own = {opt.mine} (of {len(opt.params)} tensors) -> Adam state only for these")
 
     loss_fn = nn.MSELoss()
     x, y = make_shard(rank, world_size, device)
 
     for step in range(STEPS):
-        model.zero_grad()
+        opt.zero_grad()
         loss = loss_fn(model(x), y)
         loss.backward()
-
-        reduce_average_gradients(model, world_size)
-        step_and_all_gather(model, owner, rank, world_size, lr=0.05)
-
+        opt.step()
         rank_print(rank, f"step {step} | local_loss = {loss.item():.4f}")
 
-    rank0_print(rank, "ZeRO-1 done: optimizer state is sharded, memory footprint drops with world_size.")
+    # ZeRO invariant: after All-Gather, every rank must hold bit-identical weights.
+    flat = torch.cat([p.data.flatten() for p in model.parameters()])
+    ref = flat.clone()
+    dist.broadcast(ref, src=0)
+    drift = (flat - ref).abs().max().item()
+    rank0_print(rank, f"ZeRO-1 done | cross-rank param drift = {drift:.2e} (0 == every rank in sync)")
 
 
 if __name__ == "__main__":

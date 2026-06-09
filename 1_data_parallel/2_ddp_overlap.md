@@ -1,4 +1,4 @@
-# DDP with Comm/Compute Overlap (Level 3)
+# DDP with Comm/Compute Overlap (Level 2)
 
 > Don't wait for backward to finish before averaging — fire each gradient's All-Reduce the instant it's ready, from an autograd hook, so communication hides behind the rest of backward.
 
@@ -11,7 +11,7 @@
 
 ## The problem
 
-Levels 1 and 2 run the gradient sync *after* `backward()` fully returns — communication and computation happen back-to-back, so total step time ≈ compute + comm. But gradients become available incrementally during backward (last layer first). If we start reducing each gradient the moment it's ready, its transfer overlaps with the backward still computing earlier layers, and comm time largely disappears behind compute.
+Level 1 runs the gradient sync *after* `backward()` fully returns — communication and computation happen back-to-back, so total step time ≈ compute + comm. But gradients become available incrementally during backward (last layer first). If we start reducing each gradient the moment it's ready, its transfer overlaps with the backward still computing earlier layers, and comm time largely disappears behind compute.
 
 > On a single CPU box there's no wall-clock win to observe — the lesson is the **mechanism**: hooks + async collectives + a wait barrier. The exact same code is what pays off on a real GPU cluster.
 
@@ -41,11 +41,11 @@ sequenceDiagram
 
 ## What you'll see
 
-Before your implementation the run stops at `NotImplementedError: TODO(a): launch an async All-Reduce in _overlap_hook` (and then `TODO(b)`). Once both are correct, rank 0 prints `overlapped sync | max err vs full-batch grad = 2.4e-07` — the same average as naive/bucketed, produced by comm fired from inside backward.
+Before your implementation the run stops at `NotImplementedError: TODO(a): launch an async All-Reduce in _overlap_hook` (and then `TODO(b)`). Once both are correct, rank 0 prints `overlapped sync | max err vs full-batch grad = 2.4e-07` — the same average as naive DDP, produced by comm fired from inside backward. Level 3 then reduces whole **buckets** this same way.
 
 ## Your battle zones
 
-In `1_data_parallel/3_ddp_overlap.py`:
+In `1_data_parallel/2_ddp_overlap.py`:
 
 1. **(a) `_overlap_hook(param)`** — the `if not self.overlap_enabled: return` guard is provided. Start a non-blocking All-Reduce(SUM) on `param.grad` and stash what `finish_overlap` needs in `self._handles`. (`dist.all_reduce` has an `async_op` flag and returns a work handle.)
 2. **(b) `finish_overlap()`** — drain `self._handles`: wait on each in-flight reduce, finish averaging that grad, reset the list.
@@ -53,7 +53,7 @@ In `1_data_parallel/3_ddp_overlap.py`:
 ## Run it
 
 ```bash
-python 1_data_parallel/3_ddp_overlap.py
+python 1_data_parallel/2_ddp_overlap.py
 ```
 
 ## Papers & further reading

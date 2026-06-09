@@ -1,7 +1,7 @@
-"""Module 1 - Level 3: Data Parallel with communication/computation overlap.
+"""Module 1 - Level 2: Data Parallel with communication/computation overlap.
 
 Principle in one line:
-    Levels 1 and 2 wait for backward() to FULLY finish, then average gradients. But a
+    Level 1 waits for backward() to FULLY finish, then averages gradients. But a
     parameter's gradient is ready the moment its layer's backward is done -- long before
     the earliest layers finish. Overlap exploits that: the instant a grad is ready, fire
     its All-Reduce asynchronously and let it fly WHILE backward keeps computing the rest.
@@ -10,12 +10,13 @@ Principle in one line:
     We hook into autograd with `register_post_accumulate_grad_hook`: it fires per
     parameter as soon as `.grad` is populated. The hook launches a non-blocking
     All-Reduce; after backward() we wait on all of them and finish the averaging.
-    This is the heart of how real DDP achieves near-linear scaling.
+    This is the heart of how real DDP achieves near-linear scaling -- and Level 3
+    (bucketing) builds straight on top of it by reducing whole buckets at once.
 
 (On a single CPU box there's no wall-clock win to see -- the lesson is the MECHANISM:
 hooks + async collectives + a wait barrier. The same code is what pays off on GPUs.)
 
-Run: python 1_data_parallel/3_ddp_overlap.py
+Run: python 1_data_parallel/2_ddp_overlap.py
 """
 
 from __future__ import annotations
@@ -91,7 +92,7 @@ class MicroDDP(nn.Module):
         if not self.overlap_enabled:
             return
         # TODO(you): launch an async All-Reduce on param.grad and remember its handle.
-        # raise NotImplementedError("TODO(a): launch an async All-Reduce in _overlap_hook")
+        raise NotImplementedError("TODO(a): launch an async All-Reduce in _overlap_hook")
 
     def finish_overlap(self) -> None:
         """Call AFTER backward(): make sure every in-flight All-Reduce has landed, then
@@ -103,7 +104,7 @@ class MicroDDP(nn.Module):
         ========================================================================
         """
         # TODO(you): wait on every handle, average, then clear the list.
-        # raise NotImplementedError("TODO(b): wait on the async handles and average in finish_overlap")
+        raise NotImplementedError("TODO(b): wait on the async handles and average in finish_overlap")
 
 
 def build_global_dataset(device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
@@ -159,7 +160,7 @@ def run(rank: int, world_size: int, device: torch.device) -> None:
         opt.step()
         rank_print(rank, f"step {step} | local_loss = {loss.item():.4f}")
 
-    rank0_print(rank, "Overlapped DDP done: comm fired from backward hooks, same average as naive/bucketed.")
+    rank0_print(rank, "Overlapped DDP done: comm fired from backward hooks, same average as naive. Next: bucket the reduces.")
 
 
 if __name__ == "__main__":

@@ -13,8 +13,8 @@ initial weights so every rank starts identical, `forward` delegates to the wrapp
 model, and after backward() you call `sync_grads()` to average gradients across ranks.
 
 This is the baseline. Two follow-ups make the SAME averaging faster:
-    2_ddp_bucketing.py -- fuse every grad into ONE All-Reduce (amortize per-call cost).
-    3_ddp_overlap.py   -- fire each grad's All-Reduce from a backward hook (overlap comm).
+    2_ddp_overlap.py   -- fire each grad's All-Reduce from a backward hook (overlap comm).
+    3_ddp_bucketing.py -- reduce whole BUCKETS of grads async at once (the real DDP combo).
 
 Run: python 1_data_parallel/1_ddp_demo.py
 """
@@ -136,7 +136,7 @@ def run(rank: int, world_size: int, device: torch.device) -> None:
         opt.step()
         rank_print(rank, f"step {step} | local_loss = {loss.item():.4f}")
 
-    rank0_print(rank, "Naive DDP done: averaged grads match the full-batch gradient. Next: bucketing, then overlap.")
+    rank0_print(rank, "Naive DDP done: averaged grads match the full-batch gradient. Next: overlap, then bucketing.")
 
 
 if __name__ == "__main__":
