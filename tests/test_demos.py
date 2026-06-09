@@ -1,13 +1,18 @@
 """Level-clearing ("通关") harness for every micro-trainer demo.
 
-Each numbered demo (e.g. ``1_data_parallel/1_ddp_demo.py``) ships with a
-"battle zone" that raises ``NotImplementedError`` until you hand-write the
-distributed operator. This test simply runs every demo end-to-end and checks
-that it finishes without crashing:
+Each numbered demo ships with one or more "battle zones" that raise
+``NotImplementedError`` until you hand-write the distributed operator. This test runs
+every demo (and, where a demo exposes multiple levels, every level) end-to-end and
+checks that it finishes without crashing:
 
     * level cleared  -> the demo runs to completion, exit code 0   -> PASSED
     * battle zone TODO still raises NotImplementedError            -> FAILED
     * any other crash (device mismatch, deadlock, bad shapes, ...) -> FAILED
+
+A demo that defines a module-level ``LEVELS = [...]`` list (e.g. the data-parallel
+demos: ``1_ddp.py`` has naive / overlap / bucketing) is run once PER level, as
+``python <demo>.py <level>``, so each level is its own row on the dashboard. Demos
+without ``LEVELS`` are run once with no argument.
 
 So on a fresh clone every level is red; as you implement each battle zone the
 corresponding test turns green. Run the whole dashboard with::
@@ -18,6 +23,7 @@ corresponding test turns green. Run the whole dashboard with::
 from __future__ import annotations
 
 import pathlib
+import re
 import subprocess
 import sys
 
@@ -36,16 +42,33 @@ DEMOS = sorted(
     key=lambda p: (p.parent.name, p.name),
 )
 
-
-def _demo_id(path: pathlib.Path) -> str:
-    return f"{path.parent.name}/{path.name}"
+_LEVELS_RE = re.compile(r"^LEVELS\s*=\s*\[([^\]]*)\]", re.MULTILINE)
 
 
-@pytest.mark.parametrize("demo", DEMOS, ids=[_demo_id(p) for p in DEMOS])
-def test_demo_clears(demo: pathlib.Path) -> None:
+def _levels(path: pathlib.Path) -> list[str | None]:
+    """Levels a demo exposes via a module-level ``LEVELS = [...]`` literal (else [None])."""
+    match = _LEVELS_RE.search(path.read_text())
+    if not match:
+        return [None]
+    found = re.findall(r"""["']([^"']+)["']""", match.group(1))
+    return list(found) or [None]
+
+
+def _case_id(path: pathlib.Path, level: str | None) -> str:
+    base = f"{path.parent.name}/{path.name}"
+    return f"{base}::{level}" if level else base
+
+
+CASES = [(demo, level) for demo in DEMOS for level in _levels(demo)]
+IDS = [_case_id(demo, level) for demo, level in CASES]
+
+
+@pytest.mark.parametrize("demo,level", CASES, ids=IDS)
+def test_demo_clears(demo: pathlib.Path, level: str | None) -> None:
     """A level is 'cleared' when its demo runs to completion (exit code 0)."""
+    cmd = [sys.executable, str(demo)] + ([level] if level else [])
     proc = subprocess.run(
-        [sys.executable, str(demo)],
+        cmd,
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
@@ -58,4 +81,4 @@ def test_demo_clears(demo: pathlib.Path) -> None:
             hint = "battle zone not implemented yet -- fill in the # TODO to clear this level"
         else:
             hint = "demo crashed -- see the traceback below"
-        pytest.fail(f"{_demo_id(demo)}: {hint}\n\n{tail}", pytrace=False)
+        pytest.fail(f"{_case_id(demo, level)}: {hint}\n\n{tail}", pytrace=False)

@@ -15,8 +15,8 @@ Principle in one line (after "Visualizing 6D Mesh Parallelism"):
         TP -> All-Reduce per layer          (2_tensor_parallel/)
         EP -> All-to-All dispatch/combine   (4_expert_parallel/)
         CP -> All-Gather K/V (or ring)      (6_context_parallel/1_ring_attention.py)
-        FS -> All-Gather params + Reduce-Scatter grads  (1_data_parallel/6_fsdp_demo.py)
-        DP -> All-Reduce grads              (1_data_parallel/1_ddp_demo.py)
+        FS -> All-Gather params + Reduce-Scatter grads  (1_data_parallel/2_fsdp.py zero3)
+        DP -> All-Reduce grads              (1_data_parallel/1_ddp.py naive)
         PP -> P2P send/recv                 (3_pipeline_parallel/)
 
     This demo doesn't re-derive those collectives (the other modules already do). It builds
@@ -64,8 +64,8 @@ AXIS_INFO = {
     "TP": "All-Reduce per layer        (2_tensor_parallel/)",
     "EP": "All-to-All dispatch/combine (4_expert_parallel/)",
     "CP": "All-Gather K/V or ring      (6_context_parallel/1_ring_attention.py)",
-    "FS": "All-Gather + Reduce-Scatter (1_data_parallel/6_fsdp_demo.py)",
-    "DP": "All-Reduce grads            (1_data_parallel/1_ddp_demo.py)",
+    "FS": "All-Gather + Reduce-Scatter (1_data_parallel/2_fsdp.py zero3)",
+    "DP": "All-Reduce grads            (1_data_parallel/1_ddp.py naive)",
     "PP": "P2P send/recv               (3_pipeline_parallel/)",
 }
 

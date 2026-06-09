@@ -61,7 +61,7 @@ Prereq: install [uv](https://docs.astral.sh/uv/) (or any environment that can in
 uv sync
 
 # Run any demo directly -- no torchrun, no environment variables
-uv run python 1_data_parallel/1_ddp_demo.py
+uv run python 1_data_parallel/1_ddp.py naive
 ```
 
 > On the first run you'll see the cluster spin up and the data get sharded, then it stops
@@ -86,13 +86,10 @@ micro-trainer/
 |   `-- __init__.py             #   launch_teaching_cluster / bind_device / Timeline dashboard
 |
 |-- 1_data_parallel/            # Module 1: data parallelism & memory sharding
-|   |-- 1_ddp_demo.py             #   L1: naive DDP as MicroDDP module (one All-Reduce per param)
-|   |-- 2_ddp_overlap.py          #   L2: async All-Reduce fired from backward hooks (overlap)
-|   |-- 3_ddp_bucketing.py        #   L3: reduce whole grad buckets async at once (real DDP combo)
-|   |-- 4_zero1_demo.py           #   evolution: ZeRO-1 (optimizer state sharding, reduce + broadcast)
-|   |-- 5_zero2_demo.py           #   evolution: ZeRO-2 (one ShardedDDP wrapper: grad + optimizer-state sharding)
-|   |-- 6_fsdp_demo.py            #   evolution: ZeRO-3 / FSDP (+ param sharding, All-Gather + Reduce-Scatter)
-|   `-- 7_hsdp_demo.py            #   evolution: HSDP (2D mesh -- intra-node FSDP + inter-node DDP)
+|   |-- _common.py                #   shared scaffolding (TinyMLP, dataset, flatten helpers, CLI launcher)
+|   |-- 1_ddp.py                  #   MicroDDP, levels: naive / overlap / bucketing
+|   |-- 2_fsdp.py                 #   MicroFSDP, stages: zero1 / zero2 / zero3 (the ZeRO ladder)
+|   `-- 3_hsdp.py                 #   MicroHSDP (2D mesh -- intra-node FSDP + inter-node DDP)
 |
 |-- 2_tensor_parallel/          # Module 2: Megatron matrix sharding
 |   |-- 1_column_parallel.py      #   baseline: column split (All-Gather concat)
@@ -148,17 +145,16 @@ ideas from the levels above it, so you always have the tools you need.
 
 | Level | Difficulty | Demo | Doc | New skill you'll hand-write |
 | ----- | ---------- | ---- | --- | --------------------------- |
-| **0. Hello, collective** | ★☆☆☆☆ | [`1_data_parallel/1_ddp_demo.py`](1_data_parallel/1_ddp_demo.py) | [doc](1_data_parallel/1_ddp_demo.md) | a single `all_reduce` (gradient average) -- **start here** |
+| **0. Hello, collective** | ★☆☆☆☆ | [`1_data_parallel/1_ddp.py`](1_data_parallel/1_ddp.py) `naive` | [doc](1_data_parallel/1_ddp.md) | a single `all_reduce` (gradient average) -- **start here** |
 | | ★☆☆☆☆ | [`2_tensor_parallel/1_column_parallel.py`](2_tensor_parallel/1_column_parallel.py) | [doc](2_tensor_parallel/1_column_parallel.md) | `all_gather` + concat |
 | | ★☆☆☆☆ | [`2_tensor_parallel/2_row_parallel.py`](2_tensor_parallel/2_row_parallel.py) | [doc](2_tensor_parallel/2_row_parallel.md) | `all_reduce` partial sums |
-| | ★★★☆☆ | [`1_data_parallel/2_ddp_overlap.py`](1_data_parallel/2_ddp_overlap.py) | [doc](1_data_parallel/2_ddp_overlap.md) | async `all_reduce` from backward hooks (overlap) |
-| | ★★★★☆ | [`1_data_parallel/3_ddp_bucketing.py`](1_data_parallel/3_ddp_bucketing.py) | [doc](1_data_parallel/3_ddp_bucketing.md) | reduce whole grad buckets async at once (real DDP combo) |
-| **1. Sharding** | ★★☆☆☆ | [`1_data_parallel/4_zero1_demo.py`](1_data_parallel/4_zero1_demo.py) | [doc](1_data_parallel/4_zero1_demo.md) | ZeRO-1: shard optimizer state (`all_reduce` + `broadcast`) |
-| | ★★★☆☆ | [`1_data_parallel/5_zero2_demo.py`](1_data_parallel/5_zero2_demo.py) | [doc](1_data_parallel/5_zero2_demo.md) | ZeRO-2: ShardedDDP wrapper `reduce`s grads to owners |
-| | ★★☆☆☆ | [`1_data_parallel/6_fsdp_demo.py`](1_data_parallel/6_fsdp_demo.py) | [doc](1_data_parallel/6_fsdp_demo.md) | ZeRO-3 / FSDP: + shard params (`all_gather` + `reduce_scatter`) |
+| | ★★★☆☆ | [`1_data_parallel/1_ddp.py`](1_data_parallel/1_ddp.py) `overlap` / `bucketing` | [doc](1_data_parallel/1_ddp.md) | async `all_reduce` from backward hooks; then bucketed |
+| **1. Sharding** | ★★☆☆☆ | [`1_data_parallel/2_fsdp.py`](1_data_parallel/2_fsdp.py) `zero1` | [doc](1_data_parallel/2_fsdp.md) | ZeRO-1: shard optimizer state (`all_reduce`, owned chunk) |
+| | ★★★☆☆ | [`1_data_parallel/2_fsdp.py`](1_data_parallel/2_fsdp.py) `zero2` | [doc](1_data_parallel/2_fsdp.md) | ZeRO-2: + shard grads (`reduce_scatter`) |
+| | ★★★☆☆ | [`1_data_parallel/2_fsdp.py`](1_data_parallel/2_fsdp.py) `zero3` | [doc](1_data_parallel/2_fsdp.md) | ZeRO-3 / FSDP: + shard params (`all_gather`) |
 | **2. Process-group meshes** | ★★★☆☆ | [`5_sequence_parallel/1_megatron_sp.py`](5_sequence_parallel/1_megatron_sp.py) | [doc](5_sequence_parallel/1_megatron_sp.md) | the `all_gather`/`reduce_scatter` conjugate pair |
 | | ★★★☆☆ | [`5_sequence_parallel/2_ulysses_sp.py`](5_sequence_parallel/2_ulysses_sp.py) | [doc](5_sequence_parallel/2_ulysses_sp.md) | `all_to_all` (swap seq ↔ head) |
-| | ★★★☆☆ | [`1_data_parallel/7_hsdp_demo.py`](1_data_parallel/7_hsdp_demo.py) | [doc](1_data_parallel/7_hsdp_demo.md) | build subgroups with `new_group` (2D mesh) |
+| | ★★★☆☆ | [`1_data_parallel/3_hsdp.py`](1_data_parallel/3_hsdp.py) | [doc](1_data_parallel/3_hsdp.md) | build subgroups with `new_group` (2D mesh) |
 | | ★★★☆☆ | [`2_tensor_parallel/3_summa_2d.py`](2_tensor_parallel/3_summa_2d.py) | [doc](2_tensor_parallel/3_summa_2d.md) | row/column `broadcast` on a √N grid |
 | **3. Pipeline state machines** | ★★★☆☆ | [`3_pipeline_parallel/1_gpipe.py`](3_pipeline_parallel/1_gpipe.py) | [doc](3_pipeline_parallel/1_gpipe.md) | raw `send`/`recv` + F-then-B schedule |
 | | ★★★★☆ | [`3_pipeline_parallel/2_one_forward_backward.py`](3_pipeline_parallel/2_one_forward_backward.py) | [doc](3_pipeline_parallel/2_one_forward_backward.md) | the 1F1B warmup/steady/cooldown machine |

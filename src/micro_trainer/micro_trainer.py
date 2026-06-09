@@ -10,16 +10,18 @@ just a navigation map telling you where to start.
 from __future__ import annotations
 
 DEMOS = [
-    ("1_data_parallel/1_ddp_demo.py", "Naive DDP as a MicroDDP module (one All-Reduce per param)"),
-    ("1_data_parallel/2_ddp_overlap.py", "DDP comm/compute overlap (async All-Reduce from backward hooks)"),
-    ("1_data_parallel/3_ddp_bucketing.py", "DDP bucketed overlap (async All-Reduce per grad bucket -- the real combo)"),
-    ("1_data_parallel/4_zero1_demo.py", "ZeRO-1 (optimizer state sharding via MicroZeroOptimizer)"),
-    ("1_data_parallel/5_zero2_demo.py", "ZeRO-2 (single ShardedDDP wrapper: shards grads + optimizer state)"),
     (
-        "1_data_parallel/6_fsdp_demo.py",
-        "ZeRO-3 / FSDP (+ param sharding, All-Gather + Reduce-Scatter)",
+        "1_data_parallel/1_ddp.py <naive|overlap|bucketing>",
+        "MicroDDP: per-param All-Reduce -> async backward-hook overlap -> bucketed",
     ),
-    ("1_data_parallel/7_hsdp_demo.py", "HSDP (2D mesh: intra-node FSDP + inter-node DDP)"),
+    (
+        "1_data_parallel/2_fsdp.py <zero1|zero2|zero3>",
+        "MicroFSDP / ZeRO ladder: shard optimizer state -> + grads -> + params",
+    ),
+    (
+        "1_data_parallel/3_hsdp.py",
+        "MicroHSDP (2D mesh: intra-node FSDP Reduce-Scatter + inter-node DDP All-Reduce)",
+    ),
     ("2_tensor_parallel/1_column_parallel.py", "Column-parallel linear (All-Gather concat)"),
     ("2_tensor_parallel/2_row_parallel.py", "Row-parallel linear (All-Reduce sum)"),
     ("2_tensor_parallel/3_summa_2d.py", "2D/2.5D SUMMA tensor parallel (grid broadcasts)"),

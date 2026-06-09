@@ -2,22 +2,18 @@
 
 > Replicate the model, shard the data; then progressively shard the *state* (optimizer → gradients → parameters) to fit bigger models.
 
-First make DDP itself faster (naive → overlap → bucketing), then climb the "memory sharding ladder" (ZeRO stages). Do them in order — each one removes a cost or redundancy the previous one still kept. Demos 1–3 build a hand-written `MicroDDP(nn.Module)` one battle zone at a time.
+Three wrappers, each with selectable **levels** (so the boilerplate lives in one place — see [`_common.py`](_common.py)). First make DDP itself faster, then climb the "memory sharding ladder" (ZeRO stages), then go 2D with HSDP.
 
-| # | Demo | Doc | Difficulty | What you hand-write |
-| - | ---- | --- | ---------- | ------------------- |
-| 1 | [`1_ddp_demo.py`](1_ddp_demo.py) | [doc](1_ddp_demo.md) | ★☆☆☆☆ | gradient `all_reduce` averaging (the "hello world") |
-| 2 | [`2_ddp_overlap.py`](2_ddp_overlap.py) | [doc](2_ddp_overlap.md) | ★★★☆☆ | async `all_reduce` from backward hooks (overlap comm/compute) |
-| 3 | [`3_ddp_bucketing.py`](3_ddp_bucketing.py) | [doc](3_ddp_bucketing.md) | ★★★★☆ | reduce whole grad buckets async at once (the real DDP combo) |
-| 4 | [`4_zero1_demo.py`](4_zero1_demo.py) | [doc](4_zero1_demo.md) | ★★☆☆☆ | ZeRO-1: shard optimizer state (`MicroZeroOptimizer`, `all_reduce` + `broadcast`) |
-| 5 | [`5_zero2_demo.py`](5_zero2_demo.py) | [doc](5_zero2_demo.md) | ★★★☆☆ | ZeRO-2: one `MicroShardedDistributedDataParallel` wrapper shards grads (hook `reduce` to owner) + optimizer state |
-| 6 | [`6_fsdp_demo.py`](6_fsdp_demo.py) | [doc](6_fsdp_demo.md) | ★★☆☆☆ | ZeRO-3 / FSDP: + shard params (`all_gather` + `reduce_scatter`) |
-| 7 | [`7_hsdp_demo.py`](7_hsdp_demo.py) | [doc](7_hsdp_demo.md) | ★★★☆☆ | 2D mesh: intra-node FSDP + inter-node DDP (`new_group`) |
+| # | Demo | Doc | Levels | What you hand-write |
+| - | ---- | --- | ------ | ------------------- |
+| 1 | [`1_ddp.py`](1_ddp.py) | [doc](1_ddp.md) | `naive` / `overlap` / `bucketing` | `MicroDDP`: per-param `all_reduce` → async from backward hooks → bucketed |
+| 2 | [`2_fsdp.py`](2_fsdp.py) | [doc](2_fsdp.md) | `zero1` / `zero2` / `zero3` | `MicroFSDP`: shard optimizer state → + grads (`reduce_scatter`) → + params (`all_gather`) |
+| 3 | [`3_hsdp.py`](3_hsdp.py) | [doc](3_hsdp.md) | `hsdp` | `MicroHSDP`: 2D mesh — intra-node FSDP `reduce_scatter` + inter-node DDP `all_reduce` (`new_group`) |
 
-Run any demo directly (from the repo root, no env vars):
+Run a single level (from the repo root, no env vars):
 
 ```bash
-python 1_data_parallel/1_ddp_demo.py
+python 1_data_parallel/1_ddp.py overlap      # 2_fsdp.py zero2, 3_hsdp.py, ...
 ```
 
 ← Back to the [project README](../README.md) for setup and the full cross-module difficulty ladder.

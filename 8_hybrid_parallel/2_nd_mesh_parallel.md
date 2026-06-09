@@ -16,8 +16,8 @@ The blog builds intuition by adding one axis at a time. Each maps to a module yo
 | Dim | Axis | Collective | Hand-written in |
 | --- | --- | --- | --- |
 | 0D | — | none (single perfect GPU) | — |
-| 1D | **DP** | grad All-Reduce | `1_data_parallel/1_ddp_demo.py` |
-| 2D | **FS** (+DP) | All-Gather params + Reduce-Scatter grads (+ DP All-Reduce) | `1_data_parallel/6_fsdp_demo.py`, `7_hsdp_demo.py` |
+| 1D | **DP** | grad All-Reduce | `1_data_parallel/1_ddp.py naive` |
+| 2D | **FS** (+DP) | All-Gather params + Reduce-Scatter grads (+ DP All-Reduce) | `1_data_parallel/2_fsdp.py zero3`, `3_hsdp.py` |
 | 3D | **TP** | per-layer All-Reduce | `2_tensor_parallel/*` |
 | 4D | **CP** | K/V All-Gather (or ring P2P) | `6_context_parallel/1_ring_attention.py` |
 | 5D | **EP** | dispatch + combine All-to-All | `4_expert_parallel/*` |
